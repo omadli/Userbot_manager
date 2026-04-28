@@ -624,10 +624,20 @@ class LeaveChatsRunner(TaskRunner):
     """
 
     async def run(self):
-        from .services import leave_non_admin_chats_for_account
+        from .services import (
+            leave_non_admin_chats_for_account,
+            leave_specific_chats_for_account,
+        )
 
         p = self.params
         account_ids = list(p.get('account_ids') or [])
+        # Optional per-account explicit list of chat IDs. When provided,
+        # we skip the admin filter and only leave the listed chats.
+        # `chat_ids_per_account` shape: {account_id: [chat_id, ...]}
+        # `chat_ids` (flat list) is used when running across many accounts
+        # and the same target list applies to each.
+        chat_ids_per_account = p.get('chat_ids_per_account') or {}
+        chat_ids_flat = p.get('chat_ids') or []
         kind = p.get('kind', 'group')
         if kind not in ('group', 'channel'):
             kind = 'group'
@@ -705,11 +715,21 @@ class LeaveChatsRunner(TaskRunner):
                     return
 
                 try:
-                    results = await leave_non_admin_chats_for_account(
-                        account, kind=kind,
-                        delay_min=delay_min, delay_max=delay_max,
-                        max_chats=max_chats,
-                    )
+                    # Pick mode: explicit list of chat_ids vs admin-filter sweep
+                    explicit = chat_ids_per_account.get(str(account.pk)) \
+                        or chat_ids_per_account.get(account.pk) \
+                        or chat_ids_flat
+                    if explicit:
+                        results = await leave_specific_chats_for_account(
+                            account, explicit,
+                            delay_min=delay_min, delay_max=delay_max,
+                        )
+                    else:
+                        results = await leave_non_admin_chats_for_account(
+                            account, kind=kind,
+                            delay_min=delay_min, delay_max=delay_max,
+                            max_chats=max_chats,
+                        )
                 except Exception as e:
                     await self.log(
                         'error', f"Kutilmagan xato: {e}",

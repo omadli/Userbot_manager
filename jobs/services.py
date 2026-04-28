@@ -928,43 +928,40 @@ async def leave_non_admin_chats_for_account(
 
             title = getattr(entity, 'title', '') or '<noname>'
 
-            # Determine admin status without extra API calls
-            is_creator = bool(getattr(entity, 'creator', False))
-            has_admin_rights = bool(getattr(entity, 'admin_rights', None))
-
-            if is_creator:
+            # Reliable admin/creator detection: query the participant record
+            # via get_permissions. The earlier shortcut of reading
+            # `entity.creator` / `entity.admin_rights` from iter_dialogs() was
+            # missing some non-admin chats — Telegram doesn't always populate
+            # those fields on dialog snapshots, so a False entity.creator
+            # could be a real "not creator" or simply "field absent". An
+            # extra API call per chat avoids that ambiguity.
+            try:
+                perms = await client.get_permissions(entity, my_id)
+                if getattr(perms, 'is_creator', False):
+                    results.append({
+                        'chat_id': entity.id, 'title': title,
+                        'action': 'kept_admin', 'reason': 'creator',
+                    })
+                    continue
+                if getattr(perms, 'is_admin', False):
+                    results.append({
+                        'chat_id': entity.id, 'title': title,
+                        'action': 'kept_admin', 'reason': 'admin',
+                    })
+                    continue
+            except FloodWaitError:
+                raise
+            except Exception as e:
+                # If we can't determine admin status, conservatively SKIP
+                # leaving (safer to keep a chat than to leave an admin one
+                # by accident). Mark as error so the user sees what happened.
                 results.append({
                     'chat_id': entity.id, 'title': title,
-                    'action': 'kept_admin', 'reason': 'creator',
+                    'action': 'error',
+                    'reason': f"admin status aniqlanmadi: {e}",
+                    'error_type': type(e).__name__,
                 })
                 continue
-            if has_admin_rights:
-                results.append({
-                    'chat_id': entity.id, 'title': title,
-                    'action': 'kept_admin', 'reason': 'admin',
-                })
-                continue
-
-            # Basic Chat doesn't expose `creator` reliably — fall back to
-            # checking participants. This is rare; cost is bounded by the
-            # number of basic groups, which is usually tiny.
-            if isinstance(entity, Chat):
-                try:
-                    full = await client.get_permissions(entity, my_id)
-                    if full.is_creator:
-                        results.append({
-                            'chat_id': entity.id, 'title': title,
-                            'action': 'kept_admin', 'reason': 'creator (basic)',
-                        })
-                        continue
-                    if full.is_admin:
-                        results.append({
-                            'chat_id': entity.id, 'title': title,
-                            'action': 'kept_admin', 'reason': 'admin (basic)',
-                        })
-                        continue
-                except Exception:
-                    pass  # fall through to leave
 
             # Not admin — leave
             try:
@@ -1021,6 +1018,194 @@ async def leave_non_admin_chats_for_account(
 
         return results
 
+    finally:
+        try:
+            await client.disconnect()
+        except Exception:
+            pass
+
+
+# ---------------------------------------------------------------------------
+# Leave a specific list of chats by id (used by the live-chats UI where the
+# user has already manually picked which chats to leave).
+# ---------------------------------------------------------------------------
+
+async def leave_specific_chats_for_account(
+    account, chat_ids, *, delay_min=2.0, delay_max=6.0,
+):
+    """Leave each chat in `chat_ids` (resolved from the account's dialogs).
+
+    Unlike `leave_non_admin_chats_for_account`, NO admin filter is applied
+    — the caller already chose. Returns the same per-chat results format.
+    """
+    target_ids = set(int(x) for x in chat_ids)
+
+    try:
+        client = await get_client_for_account(account)
+    except Exception as e:
+        return [{
+            'chat_id': 0, 'title': '',
+            'action': 'error',
+            'reason': f"Ulanib bo'lmadi: {e}",
+            'error_type': type(e).__name__,
+        }]
+
+    results = []
+    try:
+        me = await client.get_me()
+        if not me:
+            await _mark_session_dead(account.pk)
+            return [{
+                'chat_id': 0, 'title': '',
+                'action': 'error',
+                'reason': "Sessiya yaroqsiz",
+                'error_type': 'NoMe',
+            }]
+
+        async for dialog in client.iter_dialogs():
+            if not target_ids:
+                break
+            entity = dialog.entity
+            entity_id = getattr(entity, 'id', None)
+            if entity_id is None or entity_id not in target_ids:
+                continue
+            target_ids.discard(entity_id)
+            title = getattr(entity, 'title', '') or '<noname>'
+
+            try:
+                await client.delete_dialog(entity)
+                results.append({
+                    'chat_id': entity_id, 'title': title,
+                    'action': 'left', 'reason': '',
+                })
+            except FloodWaitError as e:
+                wait = int(getattr(e, 'seconds', 0) or 0)
+                await asyncio.sleep(min(wait + 1, 60))
+                try:
+                    await client.delete_dialog(entity)
+                    results.append({
+                        'chat_id': entity_id, 'title': title,
+                        'action': 'left', 'reason': f'after FloodWait {wait}s',
+                    })
+                except Exception as e2:
+                    results.append({
+                        'chat_id': entity_id, 'title': title,
+                        'action': 'error',
+                        'reason': str(e2)[:200],
+                        'error_type': type(e2).__name__,
+                    })
+            except SESSION_DEAD_EXCEPTIONS as e:
+                await _mark_session_dead(account.pk)
+                results.append({
+                    'chat_id': entity_id, 'title': title,
+                    'action': 'error',
+                    'reason': "Sessiya chiqarib yuborilgan",
+                    'error_type': type(e).__name__,
+                })
+                break
+            except Exception as e:
+                results.append({
+                    'chat_id': entity_id, 'title': title,
+                    'action': 'error',
+                    'reason': str(e)[:200],
+                    'error_type': type(e).__name__,
+                })
+
+            await asyncio.sleep(random.uniform(delay_min, delay_max))
+
+        # Any IDs we never met as dialogs — note them
+        for missed_id in target_ids:
+            results.append({
+                'chat_id': missed_id, 'title': f'<id {missed_id}>',
+                'action': 'error',
+                'reason': "Akkaunt dialoglarida topilmadi (allaqachon chiqib ketgan?)",
+                'error_type': 'NotFound',
+            })
+
+        return results
+
+    finally:
+        try:
+            await client.disconnect()
+        except Exception:
+            pass
+
+
+# ---------------------------------------------------------------------------
+# List live Telegram dialogs (groups + channels) for the account-detail UI.
+# ---------------------------------------------------------------------------
+
+async def list_dialogs_for_account(account, *, max_dialogs=500):
+    """Pull all dialogs from Telegram and split them into groups/channels.
+
+    Returns:
+        {
+          'success': bool,
+          'error': str (if not success),
+          'groups':   [{id, title, is_admin, is_creator, unread, members}],
+          'channels': [{id, title, is_admin, is_creator, unread, subscribers}],
+        }
+
+    Admin status comes from entity.creator / entity.admin_rights — these
+    are sometimes missing from iter_dialogs() snapshots, so the live-leave
+    runner does its own get_permissions() check before deleting; for the
+    listing UI a "best-effort" flag is fine (it's only informational).
+    """
+    try:
+        client = await get_client_for_account(account)
+    except Exception as e:
+        return {'success': False, 'error': f"Ulanib bo'lmadi: {e}",
+                'groups': [], 'channels': []}
+    try:
+        me = await client.get_me()
+        if not me:
+            return {'success': False, 'error': "Sessiya yaroqsiz",
+                    'groups': [], 'channels': []}
+
+        groups, channels = [], []
+        n = 0
+        async for dialog in client.iter_dialogs():
+            n += 1
+            if n > max_dialogs:
+                break
+            entity = dialog.entity
+            if isinstance(entity, Channel):
+                is_megagroup = bool(getattr(entity, 'megagroup', False))
+                is_creator = bool(getattr(entity, 'creator', False))
+                is_admin = bool(getattr(entity, 'admin_rights', None))
+                row = {
+                    'id': entity.id,
+                    'title': getattr(entity, 'title', '') or '<noname>',
+                    'username': getattr(entity, 'username', None),
+                    'is_creator': is_creator,
+                    'is_admin': is_admin,
+                    'unread': getattr(dialog, 'unread_count', 0),
+                    'members': getattr(entity, 'participants_count', None),
+                }
+                if is_megagroup:
+                    groups.append(row)
+                else:
+                    channels.append(row)
+            elif isinstance(entity, Chat):
+                groups.append({
+                    'id': entity.id,
+                    'title': getattr(entity, 'title', '') or '<noname>',
+                    'username': None,
+                    'is_creator': False,
+                    'is_admin': False,
+                    'unread': getattr(dialog, 'unread_count', 0),
+                    'members': getattr(entity, 'participants_count', None),
+                })
+
+        # Sort by title for deterministic UI
+        groups.sort(key=lambda r: (r['title'] or '').lower())
+        channels.sort(key=lambda r: (r['title'] or '').lower())
+
+        return {'success': True, 'groups': groups, 'channels': channels}
+
+    except Exception as e:
+        return {'success': False, 'error': str(e)[:200],
+                'groups': [], 'channels': []}
     finally:
         try:
             await client.disconnect()

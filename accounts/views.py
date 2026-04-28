@@ -742,6 +742,64 @@ def get_dialogs_sync(account):
     return (list(account.groups.all().order_by('-created_at')), list(account.channels.all().order_by('-created_at')))
 
 
+async def account_live_chats(request, pk):
+    """Live view of all groups/channels the account is a member of, with
+    bulk-leave checkboxes. Hits the Telegram API on every load — slow but
+    always fresh. POST queues a leave_chats task with the selected IDs."""
+    user = await _require_login(request)
+    if user is None:
+        return redirect(f"{settings.LOGIN_URL}?next={request.path}")
+
+    account = await get_object_sync(Account, pk, owner=user)
+
+    if request.method == 'POST':
+        from jobs.models import Task as JobTask
+        raw_ids = request.POST.getlist('chat_ids')
+        try:
+            chat_ids = [int(x) for x in raw_ids]
+        except (TypeError, ValueError):
+            chat_ids = []
+        if not chat_ids:
+            messages.warning(request, "Hech qanday chat tanlanmagan")
+            return redirect('accounts:account_live_chats', pk=pk)
+
+        params = {
+            'account_ids': [account.pk],
+            'chat_ids': chat_ids,
+            'delay_min_sec': 2,
+            'delay_max_sec': 6,
+            'concurrency': 1,
+            'skip_inactive': False,  # acting on this exact account, ignore filter
+            'skip_spam': False,
+        }
+        task = await JobTask.objects.acreate(
+            kind='leave_groups',  # runner ignores `kind` when chat_ids set
+            owner=user,
+            params=params,
+        )
+        messages.success(
+            request,
+            f"Vazifa #{task.pk} navbatga qo'yildi — {len(chat_ids)} ta chatdan chiqish.",
+        )
+        return redirect('jobs:task_detail', pk=task.pk)
+
+    if not account.session_string:
+        messages.error(request, "Akkauntda sessiya yo'q — chatlarni o'qib bo'lmaydi")
+        return redirect('accounts:account_detail', pk=pk)
+
+    from jobs.services import list_dialogs_for_account
+    result = await list_dialogs_for_account(account)
+    if not result['success']:
+        messages.error(request, f"Chatlarni olishda xato: {result['error']}")
+        return redirect('accounts:account_detail', pk=pk)
+
+    return await render_async(request, 'accounts/live_chats.html', {
+        'account': account,
+        'groups': result['groups'],
+        'channels': result['channels'],
+    })
+
+
 async def account_dialogs(request, pk):
     """Kept for URL compatibility — redirects to the unified detail page."""
     return redirect('accounts:account_detail', pk=pk)

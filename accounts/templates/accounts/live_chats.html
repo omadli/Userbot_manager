@@ -1,0 +1,201 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex align-items-center mb-4 flex-wrap gap-2">
+    <a href="{% url 'accounts:account_detail' account.pk %}" class="text-muted text-decoration-none small me-3">
+        <i class="bi bi-arrow-left me-1"></i>Akkaunt
+    </a>
+    <h2 class="fw-bold mb-0">
+        <i class="bi bi-chat-dots text-primary me-2"></i>
+        Live chatlar
+    </h2>
+    <span class="badge bg-light text-dark border ms-2">
+        {{ account.first_name|default:account.phone_number }}
+    </span>
+</div>
+
+<form method="post" action="{% url 'accounts:account_live_chats' account.pk %}" id="chats-form">
+    {% csrf_token %}
+
+    <!-- Sticky action bar -->
+    <div class="card shadow-sm mb-3 position-sticky" style="top: 16px; z-index: 10;">
+        <div class="card-body py-2 d-flex flex-wrap align-items-center gap-3">
+            <span class="fw-bold small text-muted">
+                Tanlangan: <span id="selected-count" class="badge bg-primary text-white">0</span>
+            </span>
+            <div class="ms-auto d-flex gap-2 flex-wrap">
+                <button type="button" id="select-all-groups" class="btn btn-sm btn-outline-info rounded-pill px-3">
+                    <i class="bi bi-check2-square me-1"></i>Barcha guruhlar
+                </button>
+                <button type="button" id="select-all-channels" class="btn btn-sm btn-outline-info rounded-pill px-3">
+                    <i class="bi bi-check2-square me-1"></i>Barcha kanallar
+                </button>
+                <button type="button" id="clear-selection" class="btn btn-sm btn-outline-secondary rounded-pill px-3">
+                    <i class="bi bi-x-circle me-1"></i>Tozalash
+                </button>
+                <button type="submit" id="leave-btn" class="btn btn-sm btn-danger rounded-pill px-3 fw-bold" disabled
+                        onclick="return confirm('Tanlangan chatlardan haqiqatan ham chiqmoqchimisiz?')">
+                    <i class="bi bi-box-arrow-left me-1"></i>Tanlanganlardan chiqish
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <!-- Guruhlar -->
+        <div class="col-lg-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white border-bottom py-3 d-flex align-items-center">
+                    <i class="bi bi-people-fill text-info me-2"></i>
+                    <span class="fw-bold">Guruhlar</span>
+                    <span class="badge bg-info bg-opacity-10 text-info border ms-2">{{ groups|length }}</span>
+                    <input type="text" class="form-control form-control-sm rounded-pill bg-light border-0 ms-auto chat-search"
+                           data-target=".group-row" placeholder="Qidirish..." style="max-width: 180px;">
+                </div>
+                <div class="card-body p-0" style="max-height: 600px; overflow-y: auto;">
+                    {% if groups %}
+                    <table class="table table-hover mb-0 align-middle">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th style="width: 40px;" class="ps-3">
+                                    <input type="checkbox" class="form-check-input toggle-all" data-target=".group-checkbox">
+                                </th>
+                                <th>Nomi</th>
+                                <th class="text-end pe-3" style="width: 90px;">A'zolar</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for g in groups %}
+                            <tr class="group-row" data-title="{{ g.title|lower }}">
+                                <td class="ps-3">
+                                    <input type="checkbox" class="form-check-input chat-checkbox group-checkbox" name="chat_ids" value="{{ g.id }}">
+                                </td>
+                                <td>
+                                    <div class="d-flex flex-column">
+                                        <span class="fw-medium text-dark">{{ g.title }}</span>
+                                        <small class="text-muted">
+                                            {% if g.is_creator %}<span class="badge bg-warning text-dark me-1">creator</span>{% endif %}
+                                            {% if g.is_admin %}<span class="badge bg-info bg-opacity-10 text-info border me-1">admin</span>{% endif %}
+                                            {% if g.username %}@{{ g.username }}{% endif %}
+                                            {% if g.unread %}<span class="text-danger">· {{ g.unread }} unread</span>{% endif %}
+                                        </small>
+                                    </div>
+                                </td>
+                                <td class="text-end pe-3 text-muted small">
+                                    {% if g.members %}{{ g.members }}{% else %}—{% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}
+                    <div class="text-center py-5 text-muted">
+                        <i class="bi bi-people fs-1 opacity-25 d-block mb-2"></i>Guruhlar yo'q.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Kanallar -->
+        <div class="col-lg-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white border-bottom py-3 d-flex align-items-center">
+                    <i class="bi bi-megaphone-fill text-primary me-2"></i>
+                    <span class="fw-bold">Kanallar</span>
+                    <span class="badge bg-primary bg-opacity-10 text-primary border ms-2">{{ channels|length }}</span>
+                    <input type="text" class="form-control form-control-sm rounded-pill bg-light border-0 ms-auto chat-search"
+                           data-target=".channel-row" placeholder="Qidirish..." style="max-width: 180px;">
+                </div>
+                <div class="card-body p-0" style="max-height: 600px; overflow-y: auto;">
+                    {% if channels %}
+                    <table class="table table-hover mb-0 align-middle">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th style="width: 40px;" class="ps-3">
+                                    <input type="checkbox" class="form-check-input toggle-all" data-target=".channel-checkbox">
+                                </th>
+                                <th>Nomi</th>
+                                <th class="text-end pe-3" style="width: 90px;">Obuna</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for c in channels %}
+                            <tr class="channel-row" data-title="{{ c.title|lower }}">
+                                <td class="ps-3">
+                                    <input type="checkbox" class="form-check-input chat-checkbox channel-checkbox" name="chat_ids" value="{{ c.id }}">
+                                </td>
+                                <td>
+                                    <div class="d-flex flex-column">
+                                        <span class="fw-medium text-dark">{{ c.title }}</span>
+                                        <small class="text-muted">
+                                            {% if c.is_creator %}<span class="badge bg-warning text-dark me-1">creator</span>{% endif %}
+                                            {% if c.is_admin %}<span class="badge bg-info bg-opacity-10 text-info border me-1">admin</span>{% endif %}
+                                            {% if c.username %}@{{ c.username }}{% endif %}
+                                            {% if c.unread %}<span class="text-danger">· {{ c.unread }} unread</span>{% endif %}
+                                        </small>
+                                    </div>
+                                </td>
+                                <td class="text-end pe-3 text-muted small">
+                                    {% if c.members %}{{ c.members }}{% else %}—{% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}
+                    <div class="text-center py-5 text-muted">
+                        <i class="bi bi-megaphone fs-1 opacity-25 d-block mb-2"></i>Kanallar yo'q.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
+
+<script>
+(function(){
+    const form = document.getElementById('chats-form');
+    const allCb = () => form.querySelectorAll('.chat-checkbox');
+    const counter = document.getElementById('selected-count');
+    const leaveBtn = document.getElementById('leave-btn');
+
+    function refresh() {
+        const n = form.querySelectorAll('.chat-checkbox:checked').length;
+        counter.textContent = n;
+        leaveBtn.disabled = (n === 0);
+    }
+    form.addEventListener('change', e => {
+        if (e.target.classList.contains('chat-checkbox')) refresh();
+    });
+
+    // Header "select all" within a column
+    form.querySelectorAll('.toggle-all').forEach(box => {
+        box.addEventListener('change', () => {
+            form.querySelectorAll(box.dataset.target).forEach(cb => cb.checked = box.checked);
+            refresh();
+        });
+    });
+
+    document.getElementById('select-all-groups').onclick = () => {
+        form.querySelectorAll('.group-checkbox').forEach(cb => cb.checked = true); refresh();
+    };
+    document.getElementById('select-all-channels').onclick = () => {
+        form.querySelectorAll('.channel-checkbox').forEach(cb => cb.checked = true); refresh();
+    };
+    document.getElementById('clear-selection').onclick = () => {
+        allCb().forEach(cb => cb.checked = false); refresh();
+    };
+
+    // Live filter
+    document.querySelectorAll('.chat-search').forEach(inp => {
+        inp.addEventListener('input', () => {
+            const q = inp.value.toLowerCase();
+            document.querySelectorAll(inp.dataset.target).forEach(row => {
+                row.style.display = (row.dataset.title || '').includes(q) ? '' : 'none';
+            });
+        });
+    });
+})();
+</script>
+{% endblock %}
