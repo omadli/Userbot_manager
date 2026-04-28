@@ -1,0 +1,84 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+        <a href="{% url 'accounts:proxy_list' %}" class="text-muted text-decoration-none small">
+            <i class="bi bi-arrow-left me-1"></i>Proxy'lar
+        </a>
+        <h2 class="fw-bold mb-0 mt-1"><i class="bi bi-shield-lock-fill text-primary me-2"></i>{{ proxy.name }}</h2>
+    </div>
+</div>
+
+<form method="post" class="card shadow-sm">
+    {% csrf_token %}
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label fw-bold small text-uppercase text-muted">Nomi</label>
+                <input type="text" name="name" value="{{ proxy.name }}" required class="form-control rounded-pill bg-light border-0">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label fw-bold small text-uppercase text-muted">Turi</label>
+                <select name="proxy_type" class="form-select rounded-pill bg-light border-0" id="ptype">
+                    <option value="socks5" {% if proxy.proxy_type == 'socks5' %}selected{% endif %}>SOCKS5</option>
+                    <option value="mtproto" {% if proxy.proxy_type == 'mtproto' %}selected{% endif %}>MTProxy</option>
+                </select>
+            </div>
+            <div class="col-md-3 d-flex align-items-end">
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" name="is_active" id="active"
+                           {% if proxy.is_active %}checked{% endif %}>
+                    <label class="form-check-label fw-medium" for="active">Aktiv</label>
+                </div>
+            </div>
+
+            <div class="col-md-8">
+                <label class="form-label fw-bold small text-uppercase text-muted">Host</label>
+                <input type="text" name="host" value="{{ proxy.host }}" required class="form-control rounded-pill bg-light border-0">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label fw-bold small text-uppercase text-muted">Port</label>
+                <input type="number" name="port" value="{{ proxy.port }}" required min="1" max="65535" class="form-control rounded-pill bg-light border-0">
+            </div>
+
+            <div class="col-md-6" data-socks {% if proxy.proxy_type == 'mtproto' %}style="display:none"{% endif %}>
+                <label class="form-label fw-bold small text-uppercase text-muted">Username</label>
+                <input type="text" name="username" value="{{ proxy.username }}" class="form-control rounded-pill bg-light border-0">
+            </div>
+            <div class="col-md-6" data-socks {% if proxy.proxy_type == 'mtproto' %}style="display:none"{% endif %}>
+                <label class="form-label fw-bold small text-uppercase text-muted">Parol</label>
+                <input type="text" name="password" value="{{ proxy.password }}" class="form-control rounded-pill bg-light border-0">
+            </div>
+            <div class="col-12" data-mtproto {% if proxy.proxy_type != 'mtproto' %}style="display:none"{% endif %}>
+                <label class="form-label fw-bold small text-uppercase text-muted">Secret (hex)</label>
+                <input type="text" name="secret" value="{{ proxy.secret }}" class="form-control rounded-pill bg-light border-0 font-monospace">
+            </div>
+        </div>
+
+        {% if proxy.last_checked_at %}
+        <div class="mt-4 p-3 rounded-4 {% if proxy.last_check_ok %}bg-success bg-opacity-10{% else %}bg-danger bg-opacity-10{% endif %}">
+            <strong>Oxirgi tekshiruv:</strong> {{ proxy.last_checked_at|date:"d.m.Y H:i" }} —
+            {% if proxy.last_check_ok %}
+            <span class="text-success">✓ Ishlayapti</span>
+            {% else %}
+            <span class="text-danger">✗ {{ proxy.last_check_error }}</span>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+    <div class="card-footer bg-white d-flex justify-content-between border-top-0 py-3">
+        <a href="{% url 'accounts:proxy_list' %}" class="btn btn-outline-secondary rounded-pill px-4">Bekor</a>
+        <button type="submit" class="btn btn-gradient rounded-pill px-4 fw-bold">
+            <i class="bi bi-save me-1"></i>Saqlash
+        </button>
+    </div>
+</form>
+
+<script>
+    document.getElementById('ptype').addEventListener('change', function() {
+        const isMT = this.value === 'mtproto';
+        document.querySelectorAll('[data-socks]').forEach(el => el.style.display = isMT ? 'none' : '');
+        document.querySelectorAll('[data-mtproto]').forEach(el => el.style.display = isMT ? '' : 'none');
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,29 @@
+{# Reusable schedule inputs — include inside a <form method="post"> in any task_create_*.html #}
+<div class="card shadow-sm mb-3">
+    <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center"
+         role="button" data-bs-toggle="collapse" data-bs-target="#scheduleBlock">
+        <span class="fw-bold"><i class="bi bi-calendar-event me-2"></i>Jadval (ixtiyoriy)</span>
+        <i class="bi bi-chevron-down"></i>
+    </div>
+    <div class="collapse" id="scheduleBlock">
+        <div class="card-body">
+            <div class="mb-3">
+                <label class="form-label fw-bold small text-uppercase text-muted">Belgilangan vaqt</label>
+                <input type="datetime-local" name="scheduled_at"
+                       class="form-control rounded-pill bg-light border-0">
+                <small class="text-muted">Bo'sh qoldirilsa darhol ishga tushadi.</small>
+            </div>
+            <div>
+                <label class="form-label fw-bold small text-uppercase text-muted">Takroriy cron</label>
+                <input type="text" name="recurring_cron"
+                       class="form-control rounded-pill bg-light border-0 font-monospace"
+                       placeholder="*/30 * * * *">
+                <small class="text-muted">
+                    5-maydonli crontab: <code>daqiqa soat kun oy hafta</code>.
+                    Misol: <code>0 */2 * * *</code> — har 2 soatda; <code>*/15 * * * *</code> — har 15 daqiqada.
+                    Bo'sh — bir martalik.
+                </small>
+            </div>
+        </div>
+    </div>
+</div>

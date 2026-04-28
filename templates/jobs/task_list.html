@@ -1,0 +1,113 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="fw-bold mb-1"><i class="bi bi-hdd-stack text-primary me-2"></i>Vazifalar</h2>
+        <p class="text-muted mb-0">Backgroundda ishlayotgan va oldin bajarilgan avtomatlashtirish vazifalari</p>
+    </div>
+    <a href="{% url 'jobs:pool_list' %}" class="btn btn-outline-primary rounded-pill px-3">
+        <i class="bi bi-collection me-1"></i>Pool'lar
+    </a>
+</div>
+
+<div class="alert alert-warning border-0 shadow-sm rounded-4 d-flex align-items-start gap-3 mb-4">
+    <i class="bi bi-info-circle-fill fs-4 text-warning"></i>
+    <div>
+        <strong>Eslatma:</strong> Vazifalar <code>python manage.py run_worker</code> buyrug'i ishga tushirilganda bajariladi.
+        Worker alohida terminalda ishlab turishi kerak.
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body p-0">
+        {% if tasks %}
+        <table class="table table-hover mb-0 align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th class="ps-4" style="width: 70px;">#</th>
+                    <th>Turi</th>
+                    <th>Holat</th>
+                    <th>Progress</th>
+                    <th style="width: 140px;">Natija</th>
+                    <th>Boshlangan</th>
+                    <th class="text-end pe-4" style="width: 200px;">Amallar</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for t in tasks %}
+                <tr>
+                    <td class="ps-4 fw-bold text-muted">#{{ t.pk }}</td>
+                    <td>
+                        <a href="{% url 'jobs:task_detail' t.pk %}" class="text-decoration-none text-dark fw-semibold">
+                            {{ t.get_kind_display }}
+                        </a>
+                        {% if t.recurring_cron %}
+                        <span class="badge bg-info bg-opacity-10 text-info border border-info rounded-pill ms-2" title="Cron: {{ t.recurring_cron }}">
+                            <i class="bi bi-arrow-repeat"></i>
+                        </span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if t.status == 'pending' and t.scheduled_at and t.is_scheduled_future %}
+                            <span class="badge bg-info bg-opacity-10 text-info border border-info rounded-pill px-3" title="{{ t.scheduled_at|date:'d.m.Y H:i' }}"><i class="bi bi-calendar-event me-1"></i>Jadvalda</span>
+                        {% elif t.status == 'pending' %}
+                            <span class="badge bg-secondary bg-opacity-10 text-secondary border border-secondary rounded-pill px-3"><i class="bi bi-hourglass me-1"></i>Kutmoqda</span>
+                        {% elif t.status == 'running' %}
+                            <span class="badge bg-primary bg-opacity-10 text-primary border border-primary rounded-pill px-3"><i class="bi bi-arrow-repeat me-1"></i>Ishlamoqda</span>
+                        {% elif t.status == 'completed' %}
+                            <span class="badge bg-success bg-opacity-10 text-success border border-success rounded-pill px-3"><i class="bi bi-check-circle me-1"></i>Yakunlandi</span>
+                        {% elif t.status == 'failed' %}
+                            <span class="badge bg-danger bg-opacity-10 text-danger border border-danger rounded-pill px-3"><i class="bi bi-x-circle me-1"></i>Xato</span>
+                        {% elif t.status == 'cancelled' %}
+                            <span class="badge bg-warning bg-opacity-10 text-warning border border-warning rounded-pill px-3"><i class="bi bi-slash-circle me-1"></i>Bekor</span>
+                        {% endif %}
+                    </td>
+                    <td style="min-width: 180px;">
+                        <div class="progress" style="height: 8px;">
+                            <div class="progress-bar {% if t.status == 'failed' or t.error_count and not t.success_count %}bg-danger{% elif t.status == 'completed' %}bg-success{% else %}bg-primary{% endif %}"
+                                 style="width: {{ t.percent }}%"></div>
+                        </div>
+                        <small class="text-muted">{{ t.done }} / {{ t.total }} ({{ t.percent }}%)</small>
+                    </td>
+                    <td>
+                        <span class="badge bg-success bg-opacity-10 text-success rounded-pill px-2">✓ {{ t.success_count }}</span>
+                        <span class="badge bg-danger bg-opacity-10 text-danger rounded-pill px-2">✗ {{ t.error_count }}</span>
+                    </td>
+                    <td class="text-muted small">{{ t.created_at|date:"d.m.Y H:i" }}</td>
+                    <td class="text-end pe-4">
+                        <a href="{% url 'jobs:task_detail' t.pk %}" class="btn btn-sm btn-primary rounded-pill px-3">
+                            <i class="bi bi-eye me-1"></i>Ko'rish
+                        </a>
+                        {% if t.status == 'pending' or t.status == 'running' %}
+                        <form method="post" class="m-0 d-inline">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="cancel">
+                            <input type="hidden" name="pk" value="{{ t.pk }}">
+                            <button class="btn btn-sm btn-outline-warning rounded-pill px-2" title="Bekor qilish">
+                                <i class="bi bi-slash-circle"></i>
+                            </button>
+                        </form>
+                        {% else %}
+                        <form method="post" class="m-0 d-inline" onsubmit="return confirm('Taskni o\'chirasizmi?');">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="delete">
+                            <input type="hidden" name="pk" value="{{ t.pk }}">
+                            <button class="btn btn-sm btn-outline-danger rounded-pill px-2" title="O'chirish">
+                                <i class="bi bi-trash3"></i>
+                            </button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="text-center py-5 text-muted">
+            <i class="bi bi-hdd-stack fs-1 opacity-25 d-block mb-2"></i>
+            Hali vazifa yo'q. Akkauntlar sahifasidan akkaunt tanlab "Guruh yaratish" ni bajaring.
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

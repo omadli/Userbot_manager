@@ -1,0 +1,110 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+        <a href="{% url 'accounts:dashboard' %}" class="text-muted text-decoration-none small">
+            <i class="bi bi-arrow-left me-1"></i>Akkauntlar
+        </a>
+        <h2 class="fw-bold mb-1 mt-1"><i class="bi bi-fire text-warning me-2"></i>Akkaunt warming</h2>
+        <p class="text-muted mb-0">Yangi sessiyani "isitish" — organik ko'rinishdagi o'qish faoliyati</p>
+    </div>
+</div>
+
+<div class="alert alert-info border-0 shadow-sm rounded-4 d-flex align-items-start gap-3">
+    <i class="bi bi-info-circle-fill fs-4 text-info"></i>
+    <div>
+        <strong>Nima qiladi:</strong> har akkaunt o'z dialoglarini olib, random chat'lardan xabarlarni o'qiydi,
+        odamga o'xshash pauzalar bilan. Yangi login qilingan akkauntni bulk amallardan oldin 15-30 daqiqa warming qilsangiz —
+        Telegram antifraud tizimi shubhalanmaydi.
+        <br>Read-only operatsiyalar, kunlik byudjetni sarflamaydi.
+    </div>
+</div>
+
+<form method="post" action="{% url 'jobs:task_create_account_warming' %}" class="row g-3">
+    {% csrf_token %}
+    {% for aid in account_ids %}<input type="hidden" name="account_ids" value="{{ aid }}">{% endfor %}
+
+    <div class="col-lg-8">
+        <div class="card shadow-sm mb-3">
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold small text-uppercase text-muted">Davomiylik (daq)</label>
+                        <input type="number" name="duration_minutes" value="15" min="1" max="480" required
+                               class="form-control rounded-pill bg-light border-0">
+                        <small class="text-muted">Har akkaunt shu vaqt davomida warming qiladi</small>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold small text-uppercase text-muted">Parallel akkauntlar</label>
+                        <input type="number" name="concurrency" value="3" min="1" max="20" required
+                               class="form-control rounded-pill bg-light border-0">
+                    </div>
+
+                    <div class="col-12">
+                        <label class="form-label fw-bold small text-uppercase text-muted">Intensivlik</label>
+                        <div class="btn-group w-100" role="group">
+                            <input type="radio" class="btn-check" name="intensity" id="i-low" value="low">
+                            <label class="btn btn-outline-primary" for="i-low">
+                                <i class="bi bi-moon me-1"></i>Past (40-90s pauza)
+                            </label>
+                            <input type="radio" class="btn-check" name="intensity" id="i-medium" value="medium" checked>
+                            <label class="btn btn-outline-primary" for="i-medium">
+                                <i class="bi bi-cloud-sun me-1"></i>O'rta (20-60s)
+                            </label>
+                            <input type="radio" class="btn-check" name="intensity" id="i-high" value="high">
+                            <label class="btn btn-outline-primary" for="i-high">
+                                <i class="bi bi-sun me-1"></i>Yuqori (8-25s)
+                            </label>
+                        </div>
+                        <small class="text-muted d-block mt-2">
+                            Past = tabiiyroq. Yuqori = ko'proq operatsiya, lekin ehtimoliy FloodWait.
+                        </small>
+                    </div>
+
+                    <div class="col-12">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="skip_inactive" name="skip_inactive" checked>
+                            <label class="form-check-label" for="skip_inactive">Nofaol akkauntlar skip</label>
+                        </div>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="skip_spam" name="skip_spam" checked>
+                            <label class="form-check-label" for="skip_spam">Spam akkauntlar skip</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card shadow-sm mb-3">
+            <div class="card-header bg-white border-bottom py-3">
+                <span class="fw-bold"><i class="bi bi-person-check me-2"></i>Akkauntlar</span>
+                <span class="badge bg-primary rounded-pill ms-2">{{ accounts|length }}</span>
+            </div>
+            <div class="card-body p-0" style="max-height: 400px; overflow-y: auto;">
+                <ul class="list-group list-group-flush">
+                    {% for a in accounts %}
+                    <li class="list-group-item d-flex justify-content-between">
+                        <div>
+                            <div class="fw-medium">{{ a.phone_number }}</div>
+                            <small class="text-muted">{{ a.first_name|default:"Nomsiz" }}</small>
+                        </div>
+                        <div>
+                            {% if not a.is_active %}<span class="badge bg-danger bg-opacity-10 text-danger">Nofaol</span>{% endif %}
+                            {% if a.is_spam %}<span class="badge bg-warning bg-opacity-10 text-warning">Spam</span>{% endif %}
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+
+        {% include 'jobs/_schedule_block.html' %}
+
+        <button type="submit" class="btn btn-gradient rounded-pill w-100 py-3 fw-bold shadow">
+            <i class="bi bi-play-fill me-1"></i>Warming boshlash
+        </button>
+    </div>
+</form>
+{% endblock %}

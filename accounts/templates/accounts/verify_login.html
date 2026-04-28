@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="row justify-content-center py-5">
+    <div class="col-md-6 col-lg-5 text-center">
+        
+        <div class="mb-4">
+            <i class="bi bi-shield-lock text-primary" style="font-size: 3rem;"></i>
+            <h3 class="fw-bold mt-2 text-dark">Kodni tasdiqlash</h3>
+            <p class="text-muted">Biz ushbu raqamga kod yubordik:<br> <strong class="fs-5 text-dark">{{ phone_number }}</strong></p>
+        </div>
+        
+        <div class="card p-4 text-start shadow-sm border-0">
+            <form method="post">
+                {% csrf_token %}
+                {% if not needs_password %}
+                    <!-- KOD -->
+                    <div class="mb-4 position-relative">
+                        <label class="form-label text-muted fw-bold small">Telegramdan kelgan kod</label>
+                        <input type="text" name="code" class="form-control form-control-lg bg-light border-0" placeholder="12345" required autofocus>
+                    </div>
+                    
+                    <!-- EMAIL -->
+                    <div class="mb-4">
+                        <label class="form-label text-muted fw-bold small">Elektron pochta (Email)</label>
+                        <input type="email" name="email" class="form-control form-control-lg bg-light border-0" placeholder="example@gmail.com" {% if email %}value="{{ email }}"{% endif %}>
+                        <div class="form-text">Boshqa tizimlarga ulanganda tiklash vositasi (Ixtiyoriy)</div>
+                    </div>
+                {% else %}
+                <div class="mb-4">
+                    <label class="form-label fw-bold text-muted small text-uppercase" style="letter-spacing: 0.5px;">Ikki Bosqichli Parol (2FA)</label>
+                    <input type="password" name="password" class="form-control form-control-lg fw-medium bg-light border-0" placeholder="Parolni kiriting..." required autocomplete="off" autofocus>
+                </div>
+                {% endif %}
+                
+                <button type="submit" class="btn btn-success w-100 py-2 fs-5 rounded-pill shadow fw-bold">
+                    <i class="bi bi-check2-circle me-1"></i> Tasdiqlash
+                </button>
+                <a href="{% url 'accounts:dashboard' %}" class="btn btn-light border w-100 mt-3 py-2 rounded-pill fw-medium text-center d-block text-dark text-decoration-none">Bekor qilish</a>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,109 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+        <a href="{% url 'accounts:dashboard' %}" class="text-muted text-decoration-none small">
+            <i class="bi bi-arrow-left me-1"></i>Akkauntlar
+        </a>
+        <h2 class="fw-bold mb-1 mt-1"><i class="bi bi-bar-chart-fill text-primary me-2"></i>So'rovnomada ovoz berish</h2>
+        <p class="text-muted mb-0">Har akkaunt ko'rsatilgan so'rovnomada ovoz beradi</p>
+    </div>
+</div>
+
+<form method="post" action="{% url 'jobs:task_create_vote_poll' %}" class="row g-3">
+    {% csrf_token %}
+    {% for aid in account_ids %}<input type="hidden" name="account_ids" value="{{ aid }}">{% endfor %}
+
+    <div class="col-lg-8">
+        <div class="card shadow-sm mb-3">
+            <div class="card-body">
+                <label class="form-label fw-bold small text-uppercase text-muted">So'rovnoma URL</label>
+                <input type="url" name="poll_url" required
+                       placeholder="https://t.me/channelname/1234"
+                       class="form-control rounded-pill bg-light border-0 mb-3">
+
+                <label class="form-label fw-bold small text-uppercase text-muted">Strategiya</label>
+                <div class="btn-group w-100 mb-3" role="group">
+                    <input type="radio" class="btn-check" name="strategy" id="s-random" value="random" checked>
+                    <label class="btn btn-outline-primary rounded-pill me-2" for="s-random">
+                        <i class="bi bi-shuffle me-1"></i>Random
+                    </label>
+                    <input type="radio" class="btn-check" name="strategy" id="s-fixed" value="fixed">
+                    <label class="btn btn-outline-primary rounded-pill" for="s-fixed">
+                        <i class="bi bi-pin-angle me-1"></i>Fixed index
+                    </label>
+                </div>
+
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small text-uppercase text-muted">Option index (fixed uchun)</label>
+                        <input type="number" name="option_index" value="0" min="0"
+                               class="form-control rounded-pill bg-light border-0">
+                        <small class="text-muted">0 = birinchi variant</small>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small text-uppercase text-muted">Min pauza (s)</label>
+                        <input type="number" name="delay_min_sec" value="10" min="0" step="0.5" required
+                               class="form-control rounded-pill bg-light border-0">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small text-uppercase text-muted">Max pauza (s)</label>
+                        <input type="number" name="delay_max_sec" value="30" min="0" step="0.5" required
+                               class="form-control rounded-pill bg-light border-0">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold small text-uppercase text-muted">Parallel akkauntlar</label>
+                        <input type="number" name="concurrency" value="5" min="1" max="50" required
+                               class="form-control rounded-pill bg-light border-0">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold small text-uppercase text-muted">Min akkaunt yoshi (daq)</label>
+                        <input type="number" name="min_account_age_minutes" value="0" min="0"
+                               class="form-control rounded-pill bg-light border-0">
+                    </div>
+                    <div class="col-12">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="skip_inactive" name="skip_inactive" checked>
+                            <label class="form-check-label" for="skip_inactive">Nofaol akkauntlar skip</label>
+                        </div>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="skip_spam" name="skip_spam" checked>
+                            <label class="form-check-label" for="skip_spam">Spam akkauntlar skip</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card shadow-sm mb-3">
+            <div class="card-header bg-white border-bottom py-3">
+                <span class="fw-bold"><i class="bi bi-person-check me-2"></i>Akkauntlar</span>
+                <span class="badge bg-primary rounded-pill ms-2">{{ accounts|length }}</span>
+            </div>
+            <div class="card-body p-0" style="max-height: 400px; overflow-y: auto;">
+                <ul class="list-group list-group-flush">
+                    {% for a in accounts %}
+                    <li class="list-group-item d-flex justify-content-between">
+                        <div>
+                            <div class="fw-medium">{{ a.phone_number }}</div>
+                            <small class="text-muted">{{ a.first_name|default:"Nomsiz" }}</small>
+                        </div>
+                        <div>
+                            {% if not a.is_active %}<span class="badge bg-danger bg-opacity-10 text-danger">Nofaol</span>{% endif %}
+                            {% if a.is_spam %}<span class="badge bg-warning bg-opacity-10 text-warning">Spam</span>{% endif %}
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+        {% include 'jobs/_schedule_block.html' %}
+
+        <button type="submit" class="btn btn-gradient rounded-pill w-100 py-3 fw-bold shadow">
+            <i class="bi bi-play-fill me-1"></i>Ishga tushirish
+        </button>
+    </div>
+</form>
+{% endblock %}

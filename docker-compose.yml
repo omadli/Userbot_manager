@@ -1,0 +1,124 @@
+# Production stack for userbots.omadli.uz
+#
+# Services:
+#   db      — PostgreSQL 16 with persistent volume
+#   init    — One-shot: migrate + collectstatic, then exits (web waits on it)
+#   web     — Django ASGI (uvicorn) on :8000 (internal)
+#   worker  — Background task worker (separate container)
+#   caddy   — Reverse proxy with automatic Let's Encrypt SSL
+#
+# Quick start:
+#   1. cp .env.docker.example .env
+#   2. Edit .env (set SECRET_KEY, DB_ENCRYPTION_KEY, POSTGRES_PASSWORD, ALLOWED_HOSTS)
+#   3. docker compose up -d
+#   4. docker compose exec web python manage.py createsuperuser
+#
+# Subdomain (userbots.omadli.uz):
+#   Point an A record at this server's public IP. Caddy auto-fetches a
+#   certificate from Let's Encrypt on first request — port 80 must be open
+#   for the HTTP-01 challenge.
+
+# Shared logging block — caps json-file driver at 10 MB × 5 rotations per
+# service so /var/lib/docker/containers doesn't fill the disk over months.
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-userbots}
+      POSTGRES_USER: ${POSTGRES_USER:-userbots}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-userbots}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *default-logging
+    # Don't expose the DB port — only `web` and `worker` reach it via the
+    # default user-defined network.
+
+  init:
+    build: .
+    image: userbot-manager:latest
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - staticfiles:/app/staticfiles
+      - ./logs:/app/logs
+    command: ["init"]
+    restart: "no"
+    logging: *default-logging
+
+  web:
+    image: userbot-manager:latest
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+    volumes:
+      - media:/app/media
+      - staticfiles:/app/staticfiles
+      - ./logs:/app/logs
+    command: ["web"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging: *default-logging
+
+  worker:
+    image: userbot-manager:latest
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+    volumes:
+      - media:/app/media
+      - ./logs:/app/logs
+    command: ["worker"]
+    logging: *default-logging
+    # Telethon sessions live in the DB — no extra volume needed.
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    env_file: .env
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+      # Static + media are served by Caddy directly (faster than going through Django).
+      - staticfiles:/srv/static:ro
+      - media:/srv/media:ro
+    depends_on:
+      - web
+    logging: *default-logging
+
+volumes:
+  postgres_data:
+  media:
+  staticfiles:
+  caddy_data:
+  caddy_config:

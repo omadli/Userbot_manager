@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+        <a href="{% url 'jobs:script_list' %}" class="text-muted text-decoration-none small">
+            <i class="bi bi-arrow-left me-1"></i>Skriptlar
+        </a>
+        <h2 class="fw-bold mb-0 mt-1"><i class="bi bi-terminal-fill text-primary me-2"></i>{{ script.name }}</h2>
+    </div>
+</div>
+
+<form method="post" class="card shadow-sm">
+    {% csrf_token %}
+    <div class="card-body">
+        <div class="mb-3">
+            <label class="form-label fw-bold small text-uppercase text-muted">Nomi</label>
+            <input type="text" name="name" value="{{ script.name }}" required
+                   class="form-control rounded-pill bg-light border-0">
+        </div>
+        <div class="mb-3">
+            <label class="form-label fw-bold small text-uppercase text-muted">Izoh</label>
+            <textarea name="description" rows="2" class="form-control bg-light border-0" style="border-radius: 12px;">{{ script.description }}</textarea>
+        </div>
+        <div class="mb-3">
+            <label class="form-label fw-bold small text-uppercase text-muted">Kod</label>
+            <textarea name="code" rows="24" required spellcheck="false"
+                      class="form-control font-monospace"
+                      style="font-size: 13px; tab-size: 4;">{{ script.code }}</textarea>
+            <small class="text-muted">
+                <code>async def main(client, account, params)</code> aniqlang.
+                Qaytgan qiymat log'ga yoziladi (ilk 500 belgi).
+                <code>raise</code> qilib shu akkaunt uchun xato belgilang — boshqalar davom etadi.
+            </small>
+        </div>
+    </div>
+    <div class="card-footer bg-white d-flex justify-content-between border-top-0 py-3">
+        <a href="{% url 'jobs:script_list' %}" class="btn btn-outline-secondary rounded-pill px-4">Bekor</a>
+        <button type="submit" class="btn btn-gradient rounded-pill px-4 fw-bold">
+            <i class="bi bi-save me-1"></i>Saqlash
+        </button>
+    </div>
+</form>
+{% endblock %}

@@ -1,0 +1,630 @@
+{% extends 'base.html' %}
+{% block content %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/lipis/flag-icons@7.2.3/css/flag-icons.min.css"/>
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css"/>
+
+<style>
+.profile-banner {
+    background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 50%, #0ea5e9 100%);
+    border-radius: 16px;
+    padding: 36px 40px 28px;
+    position: relative;
+    overflow: hidden;
+}
+.profile-banner::before {
+    content: '';
+    position: absolute;
+    top: -40px; right: -40px;
+    width: 220px; height: 220px;
+    background: rgba(255,255,255,.06);
+    border-radius: 50%;
+}
+.profile-banner::after {
+    content: '';
+    position: absolute;
+    bottom: -60px; left: 30%;
+    width: 300px; height: 300px;
+    background: rgba(255,255,255,.04);
+    border-radius: 50%;
+}
+.avatar-ring {
+    width: 100px; height: 100px;
+    border-radius: 50%;
+    border: 4px solid rgba(255,255,255,.35);
+    object-fit: cover;
+    background: #fff;
+    flex-shrink: 0;
+}
+.avatar-placeholder {
+    width: 100px; height: 100px;
+    border-radius: 50%;
+    border: 4px solid rgba(255,255,255,.35);
+    background: rgba(255,255,255,.15);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 2.4rem; font-weight: 700; color: #fff;
+    flex-shrink: 0;
+}
+.stat-pill {
+    background: rgba(255,255,255,.12);
+    border: 1px solid rgba(255,255,255,.2);
+    border-radius: 50px;
+    padding: 6px 18px;
+    color: #fff;
+    font-size: .85rem;
+    font-weight: 600;
+    backdrop-filter: blur(4px);
+}
+.action-btn {
+    border-radius: 10px;
+    font-weight: 600;
+    font-size: .88rem;
+    padding: 10px 0;
+    border: 1.5px solid transparent;
+    transition: all .18s;
+}
+.action-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,.12); }
+.tab-nav .nav-link {
+    border-radius: 12px 12px 0 0;
+    font-weight: 600;
+    color: #6b7280;
+    padding: 10px 24px;
+    border: none;
+    border-bottom: 3px solid transparent;
+}
+.tab-nav .nav-link.active {
+    color: #2563eb;
+    border-bottom-color: #2563eb;
+    background: #fff;
+}
+.info-label {
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .6px;
+    text-transform: uppercase;
+    color: #9ca3af;
+    margin-bottom: 4px;
+}
+.info-val {
+    font-weight: 600;
+    color: #111827;
+    font-size: .95rem;
+}
+</style>
+
+<!-- ── Back button ───────────────────────────────────────────── -->
+<div class="mb-3">
+    <a href="{% url 'accounts:dashboard' %}" class="btn btn-light border shadow-sm rounded-pill px-3 py-1 text-dark fw-semibold">
+        <i class="bi bi-arrow-left me-1"></i> Orqaga
+    </a>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     PROFILE BANNER
+══════════════════════════════════════════════════════════════ -->
+<div class="profile-banner mb-4 shadow">
+    <div class="d-flex align-items-center gap-4 position-relative">
+
+        <!-- Avatar -->
+        {% if account.avatar %}
+        <img src="/media/{{ account.avatar }}" class="avatar-ring shadow">
+        {% else %}
+        <div class="avatar-placeholder">{{ account.phone_number|slice:'1:2' }}</div>
+        {% endif %}
+
+        <!-- Name + meta -->
+        <div class="text-white flex-grow-1">
+            <h3 class="fw-bold mb-1">
+                {% if account.first_name %}{{ account.first_name }} {{ account.last_name|default:'' }}{% else %}Nomsiz Akkaunt{% endif %}
+            </h3>
+            <div class="d-flex flex-wrap gap-2 mb-3">
+                <span class="stat-pill"><i class="bi bi-telephone-fill me-1"></i>{{ account.phone_number }}</span>
+                {% if account.username %}
+                <a href="https://t.me/{{ account.username }}" target="_blank" class="stat-pill text-decoration-none">@{{ account.username }}</a>
+                {% endif %}
+                <span class="stat-pill">
+                    <span class="fi fi-{{ account.country_code|lower }} me-1"></span>{{ account.country_code|default:'?' }}
+                </span>
+                <span class="stat-pill"><i class="bi bi-hash me-1"></i>{{ account.user_id|default:'—' }}</span>
+            </div>
+
+            <!-- Status badges -->
+            <div class="d-flex flex-wrap gap-2">
+                {% if account.is_active %}
+                <span class="badge bg-success px-3 py-2 rounded-pill fs-6 fw-semibold">
+                    <i class="bi bi-check-circle-fill me-1"></i>Aktiv
+                </span>
+                {% else %}
+                <span class="badge bg-danger px-3 py-2 rounded-pill fs-6 fw-semibold">
+                    <i class="bi bi-x-circle-fill me-1"></i>Nofaol
+                </span>
+                {% endif %}
+                {% if account.is_spam %}
+                <span class="badge bg-danger px-3 py-2 rounded-pill fs-6 fw-semibold">
+                    <i class="bi bi-shield-x me-1"></i>SPAM
+                </span>
+                {% else %}
+                <span class="badge bg-success bg-opacity-75 px-3 py-2 rounded-pill fs-6 fw-semibold">
+                    <i class="bi bi-shield-check me-1"></i>Spam emas
+                </span>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Stats (right side) -->
+        <div class="d-none d-md-flex flex-column gap-2 text-end position-relative">
+            <div class="stat-pill text-center">
+                <i class="bi bi-people-fill me-1"></i>{{ groups|length }} guruh
+            </div>
+            <div class="stat-pill text-center">
+                <i class="bi bi-megaphone-fill me-1"></i>{{ channels|length }} kanal
+            </div>
+            <div class="stat-pill text-center" style="font-size:.75rem;">
+                <i class="bi bi-calendar3 me-1"></i>{{ account.created_at|date:"d.m.Y" }}
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     QUICK ACTIONS ROW
+══════════════════════════════════════════════════════════════ -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <form method="post">{% csrf_token %}
+            <input type="hidden" name="action" value="check_session">
+            <button class="btn btn-outline-primary action-btn w-100">
+                <i class="bi bi-wifi d-block fs-3 mb-1"></i>Sessiya tekshirish
+            </button>
+        </form>
+    </div>
+    <div class="col-6 col-md-3">
+        <form method="post">{% csrf_token %}
+            <input type="hidden" name="action" value="check_spam">
+            <button class="btn btn-outline-warning action-btn w-100 text-dark" {% if not account.session_string %}disabled{% endif %}>
+                <i class="bi bi-shield-exclamation d-block fs-3 mb-1"></i>Spam tekshirish
+            </button>
+        </form>
+    </div>
+    <div class="col-6 col-md-3">
+        <a href="{% url 'accounts:relogin_account' account.pk %}" class="btn btn-outline-info action-btn w-100 text-dark">
+            <i class="bi bi-arrow-clockwise d-block fs-3 mb-1"></i>Qayta kirish
+        </a>
+    </div>
+    <div class="col-6 col-md-3">
+        <a href="{% url 'accounts:dashboard' %}" class="btn btn-outline-secondary action-btn w-100">
+            <i class="bi bi-grid-1x2 d-block fs-3 mb-1"></i>Dashboard
+        </a>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     TABS
+══════════════════════════════════════════════════════════════ -->
+<ul class="nav tab-nav border-bottom mb-0 gap-1" id="mainTabs" role="tablist">
+    <li class="nav-item">
+        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-info">
+            <i class="bi bi-person-lines-fill me-1"></i>Ma'lumotlar
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-edit">
+            <i class="bi bi-pencil-square me-1"></i>Tahrirlash
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-groups">
+            <i class="bi bi-people-fill me-1"></i>Guruhlar
+            <span class="badge bg-primary bg-opacity-10 text-primary ms-1 rounded-pill">{{ groups|length }}</span>
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-channels">
+            <i class="bi bi-megaphone-fill me-1"></i>Kanallar
+            <span class="badge bg-primary bg-opacity-10 text-primary ms-1 rounded-pill">{{ channels|length }}</span>
+        </button>
+    </li>
+</ul>
+
+<div class="tab-content">
+
+    <!-- ── TAB: Info ─────────────────────────────────────────── -->
+    <div class="tab-pane fade show active" id="tab-info">
+        <div class="card border-0 shadow-sm rounded-0 rounded-bottom rounded-3">
+            <div class="card-body p-4">
+                <div class="row g-4">
+
+                    <!-- Phone -->
+                    <div class="col-sm-6 col-lg-4">
+                        <div class="info-label">Telefon raqam</div>
+                        <div class="info-val"><i class="bi bi-telephone-fill text-primary me-1"></i>{{ account.phone_number }}</div>
+                    </div>
+
+                    <!-- Country -->
+                    <div class="col-sm-6 col-lg-4">
+                        <div class="info-label">Davlat</div>
+                        <div class="info-val">
+                            <span class="fi fi-{{ account.country_code|lower }} me-1"></span>{{ account.country_code|default:'Noma\'lum' }}
+                        </div>
+                    </div>
+
+                    <!-- Telegram ID -->
+                    <div class="col-sm-6 col-lg-4">
+                        <div class="info-label">Telegram ID</div>
+                        <div class="info-val font-monospace">#{{ account.user_id|default:'—' }}</div>
+                    </div>
+
+                    <!-- Email -->
+                    <div class="col-sm-6 col-lg-4">
+                        <div class="info-label">Email</div>
+                        <div class="info-val">{{ account.email|default:'Kiritilmagan' }}</div>
+                    </div>
+
+                    <!-- 2FA -->
+                    <div class="col-sm-6 col-lg-4">
+                        <div class="info-label">2FA Parol</div>
+                        <div class="info-val d-flex align-items-center gap-2">
+                            {% if account.two_fa_password %}
+                            <span id="pwdText" style="-webkit-text-security:disc;user-select:none;">{{ account.two_fa_password }}</span>
+                            <i class="bi bi-eye-slash text-muted" style="cursor:pointer;" onclick="togglePwd(this,'pwdText')"></i>
+                            {% else %}
+                            <span class="text-muted fst-italic">O'rnatilmagan</span>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- Created at -->
+                    <div class="col-sm-6 col-lg-4">
+                        <div class="info-label">Qo'shilgan sana</div>
+                        <div class="info-val"><i class="bi bi-calendar3 text-success me-1"></i>{{ account.created_at|date:"d M, Y / H:i" }}</div>
+                    </div>
+
+                    <div class="col-12"><hr class="opacity-10 my-0"></div>
+
+                    <!-- Device -->
+                    <div class="col-sm-6 col-lg-4">
+                        <div class="info-label"><i class="bi bi-phone me-1"></i>Qurilma</div>
+                        <div class="info-val">
+                            {% if account.device_setting %}
+                            {{ account.device_setting.name }}<br>
+                            <span class="text-muted small">{{ account.device_setting.system_version }} · v{{ account.device_setting.app_version }}</span>
+                            {% else %}<span class="text-muted fst-italic">Global default</span>{% endif %}
+                        </div>
+                    </div>
+
+                    <!-- API ID -->
+                    <div class="col-sm-6 col-lg-4">
+                        <div class="info-label"><i class="bi bi-key me-1"></i>API ID</div>
+                        <div class="info-val font-monospace">
+                            {% if account.api_id %}{{ account.api_id }}{% else %}<span class="text-muted fst-italic">Global</span>{% endif %}
+                        </div>
+                    </div>
+
+                    <!-- API Hash -->
+                    <div class="col-sm-6 col-lg-4">
+                        <div class="info-label"><i class="bi bi-key-fill me-1"></i>API Hash</div>
+                        <div class="info-val font-monospace">
+                            {% if account.api_hash %}
+                            <span class="text-truncate d-inline-block" style="max-width:160px;">{{ account.api_hash|slice:':12' }}…</span>
+                            {% else %}<span class="text-muted fst-italic">Global</span>{% endif %}
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── TAB: Edit ─────────────────────────────────────────── -->
+    <div class="tab-pane fade" id="tab-edit">
+        <div class="card border-0 shadow-sm rounded-0 rounded-bottom rounded-3">
+            <div class="card-body p-4">
+
+                <!-- ══ Main save form (auth / API / device) ══ -->
+                <form method="post" id="saveForm">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="save">
+                    <div class="row g-4">
+
+                        <div class="col-12">
+                            <h6 class="info-label mb-3"><i class="bi bi-lock me-1"></i>Auth ma'lumotlari</h6>
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label fw-semibold small">Email</label>
+                                    <input type="email" name="email" class="form-control bg-light border-0 rounded-3"
+                                           value="{{ account.email|default:'' }}" placeholder="example@domain.com">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-semibold small">2FA Parol</label>
+                                    <input type="text" name="two_fa_password" class="form-control bg-light border-0 rounded-3"
+                                           value="{{ account.two_fa_password|default:'' }}" placeholder="Ixtiyoriy">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-12"><hr class="opacity-10 my-0"></div>
+
+                        <div class="col-12">
+                            <h6 class="info-label mb-3"><i class="bi bi-key me-1"></i>API kalitlari <span class="fw-normal text-muted">(ixtiyoriy — bo'sh = global)</span></h6>
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="form-label fw-semibold small">API ID</label>
+                                    <input type="number" name="api_id" class="form-control bg-light border-0 rounded-3 font-monospace"
+                                           value="{{ account.api_id|default:'' }}" placeholder="12345678">
+                                </div>
+                                <div class="col-md-8">
+                                    <label class="form-label fw-semibold small">API Hash</label>
+                                    <input type="text" name="api_hash" class="form-control bg-light border-0 rounded-3 font-monospace"
+                                           value="{{ account.api_hash|default:'' }}" placeholder="a1b2c3d4e5…">
+                                </div>
+                            </div>
+                            <div class="form-text mt-1">Yangi kalitlar: <a href="https://my.telegram.org" target="_blank">my.telegram.org</a></div>
+                        </div>
+
+                        <div class="col-12"><hr class="opacity-10 my-0"></div>
+
+                        <div class="col-12">
+                            <h6 class="info-label mb-3"><i class="bi bi-phone me-1"></i>Qurilma (Device Fingerprint)</h6>
+                            <select name="device_setting_id" class="form-select bg-light border-0 rounded-3">
+                                <option value="">— Global sozlama (default) —</option>
+                                {% for ds in device_settings %}
+                                <option value="{{ ds.pk }}"
+                                    {% if account.device_setting and account.device_setting.pk == ds.pk %}selected{% endif %}>
+                                    {{ ds.name }} &nbsp;·&nbsp; {{ ds.system_version }} &nbsp;·&nbsp; v{{ ds.app_version }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text mt-1">Telegram shubhalanmasligi uchun har akkauntga alohida qurilma belgilang.</div>
+                        </div>
+
+                        <div class="col-12">
+                            <h6 class="info-label mb-3"><i class="bi bi-speedometer2 me-1"></i>Kunlik limit</h6>
+                            <div class="row g-2 align-items-center">
+                                <div class="col-md-4">
+                                    <input type="number" name="daily_op_limit" min="0"
+                                           value="{{ account.daily_op_limit }}"
+                                           class="form-control bg-light border-0 rounded-3">
+                                </div>
+                                <div class="col-md-8 d-flex align-items-center">
+                                    <div class="progress flex-grow-1" style="height: 10px;">
+                                        {% if account.daily_op_limit %}
+                                            {% widthratio account.quota_window_count account.daily_op_limit 100 as pct %}
+                                            <div class="progress-bar {% if account.quota_window_count >= account.daily_op_limit %}bg-danger{% else %}bg-primary{% endif %}"
+                                                 style="width: {{ pct }}%;"></div>
+                                        {% endif %}
+                                    </div>
+                                    <span class="ms-3 small fw-medium">
+                                        <strong>{{ account.quota_window_count }}</strong> / {% if account.daily_op_limit %}{{ account.daily_op_limit }}{% else %}∞{% endif %}
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="form-text mt-1">
+                                0 = cheksiz. Runnerlar har operatsiyadan oldin byudjetni kamaytiradi.
+                                {% if account.quota_window_count %}
+                                <form method="post" class="d-inline m-0">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="action" value="reset_quota">
+                                    <button class="btn btn-sm btn-link p-0 text-danger" type="submit"
+                                            onclick="return confirm('Byudjetni 0 ga qaytarasizmi?');">
+                                        <i class="bi bi-arrow-counterclockwise"></i> Byudjetni reset qilish
+                                    </button>
+                                </form>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div class="col-12">
+                            <h6 class="info-label mb-3"><i class="bi bi-shield-lock me-1"></i>Proxy</h6>
+                            <select name="proxy_id" class="form-select bg-light border-0 rounded-3">
+                                <option value="">— To'g'ridan-to'g'ri ulanish —</option>
+                                {% for px in proxies %}
+                                <option value="{{ px.pk }}"
+                                    {% if account.proxy and account.proxy.pk == px.pk %}selected{% endif %}>
+                                    {{ px.name }} — {{ px.get_proxy_type_display }} {{ px.host }}:{{ px.port }}
+                                    {% if not px.is_active %}(o'chirilgan){% endif %}
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text mt-1">
+                                <a href="{% url 'accounts:proxy_list' %}">Proxylarni boshqarish</a>
+                                — 100+ akkaunt uchun proxy'ga o'tish tavsiya etiladi.
+                            </div>
+                        </div>
+
+                    </div>
+                </form><!-- /saveForm -->
+
+                <!-- ══ Tags section — independent forms ══ -->
+                <div class="mt-4 pt-3 border-top border-opacity-10">
+                    <h6 class="info-label mb-3"><i class="bi bi-tags me-1"></i>Teglar</h6>
+
+                    <!-- Current tags: click × to remove -->
+                    <div class="d-flex flex-wrap gap-2 mb-3">
+                        {% for tag in account.tags.all %}
+                        <form method="post" class="d-inline m-0">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="remove_tag">
+                            <input type="hidden" name="tag_id" value="{{ tag.id }}">
+                            <button type="submit"
+                                class="border-0 badge bg-primary text-white px-2 py-1 rounded-pill d-inline-flex align-items-center gap-1 fw-semibold"
+                                style="cursor:pointer;font-size:.82rem;">
+                                {{ tag.name }}
+                                <i class="bi bi-x-circle-fill ms-1" style="font-size:.72rem;opacity:.8;"></i>
+                            </button>
+                        </form>
+                        {% empty %}
+                        <span class="text-muted fst-italic small">Hech qanday teg biriktirilmagan</span>
+                        {% endfor %}
+                    </div>
+
+                    <div class="row g-3">
+                        <!-- Attach existing tag -->
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold small">Mavjud tegni biriktirish</label>
+                            <form method="post" class="d-flex gap-2">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="add_tag">
+                                <select name="tag_id" class="form-select bg-light border-0 rounded-3">
+                                    <option value="">— Tanlang —</option>
+                                    {% for tag in all_tags %}
+                                    {% if tag.id not in account_tag_ids %}
+                                    <option value="{{ tag.id }}">{{ tag.name }}</option>
+                                    {% endif %}
+                                    {% endfor %}
+                                </select>
+                                <button type="submit" class="btn btn-outline-primary rounded-3 px-3 fw-semibold text-nowrap">
+                                    <i class="bi bi-plus-lg"></i>
+                                </button>
+                            </form>
+                        </div>
+
+                        <!-- Create & attach new tag -->
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold small">Yangi teg yaratish</label>
+                            <form method="post" class="d-flex gap-2">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="add_tag">
+                                <input type="text" name="new_tag_name"
+                                       class="form-control bg-light border-0 rounded-3"
+                                       placeholder="Teg nomi…" autocomplete="off">
+                                <button type="submit" class="btn btn-outline-success rounded-3 px-3 fw-semibold text-nowrap">
+                                    <i class="bi bi-plus-circle"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div><!-- /tags section -->
+
+                <!-- ══ Save / cancel buttons ══ -->
+                <div class="d-flex gap-2 mt-4 pt-3 border-top border-opacity-10">
+                    <button type="submit" form="saveForm" class="btn btn-gradient rounded-pill px-5 fw-bold shadow-sm">
+                        <i class="bi bi-floppy me-2"></i>Saqlash
+                    </button>
+                    <a href="{% url 'accounts:dashboard' %}" class="btn btn-light border rounded-pill px-4 fw-medium">Bekor qilish</a>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+
+
+    <!-- ── TAB: Groups ───────────────────────────────────────── -->
+    <div class="tab-pane fade" id="tab-groups">
+        <div class="card border-0 shadow-sm rounded-0 rounded-bottom rounded-3">
+            <div class="card-body p-0">
+                {% if groups %}
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0 dt-table" id="groupsTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="ps-4">#</th>
+                                <th>Guruh nomi</th>
+                                <th>Telegram ID</th>
+                                <th>Invite link</th>
+                                <th>Qo'shilgan sana</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for g in groups %}
+                            <tr>
+                                <td class="ps-4 text-muted">{{ forloop.counter }}</td>
+                                <td class="fw-semibold text-dark">{{ g.name }}</td>
+                                <td><code class="text-muted">{{ g.telegram_id }}</code></td>
+                                <td>
+                                    {% if g.invite_link %}
+                                    <a href="{{ g.invite_link }}" target="_blank" class="btn btn-sm btn-outline-primary rounded-pill px-3 py-0">
+                                        <i class="bi bi-link-45deg"></i> Link
+                                    </a>
+                                    {% else %}<span class="text-muted">—</span>{% endif %}
+                                </td>
+                                <td class="text-muted small">{{ g.created_at|date:"d.m.Y H:i" }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-5 text-muted">
+                    <i class="bi bi-people fs-1 opacity-25 d-block mb-2"></i>Guruhlar yo'q.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- ── TAB: Channels ─────────────────────────────────────── -->
+    <div class="tab-pane fade" id="tab-channels">
+        <div class="card border-0 shadow-sm rounded-0 rounded-bottom rounded-3">
+            <div class="card-body p-0">
+                {% if channels %}
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0 dt-table" id="channelsTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="ps-4">#</th>
+                                <th>Kanal nomi</th>
+                                <th>Telegram ID</th>
+                                <th>Invite link</th>
+                                <th>Qo'shilgan sana</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for c in channels %}
+                            <tr>
+                                <td class="ps-4 text-muted">{{ forloop.counter }}</td>
+                                <td class="fw-semibold text-dark">{{ c.name }}</td>
+                                <td><code class="text-muted">{{ c.telegram_id }}</code></td>
+                                <td>
+                                    {% if c.invite_link %}
+                                    <a href="{{ c.invite_link }}" target="_blank" class="btn btn-sm btn-outline-primary rounded-pill px-3 py-0">
+                                        <i class="bi bi-link-45deg"></i> Link
+                                    </a>
+                                    {% else %}<span class="text-muted">—</span>{% endif %}
+                                </td>
+                                <td class="text-muted small">{{ c.created_at|date:"d.m.Y H:i" }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-5 text-muted">
+                    <i class="bi bi-megaphone fs-1 opacity-25 d-block mb-2"></i>Kanallar yo'q.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+</div><!-- /tab-content -->
+
+<!-- ── Scripts ──────────────────────────────────────────────── -->
+<script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+<script>
+function togglePwd(icon, id) {
+    const el = document.getElementById(id);
+    if (el.style.webkitTextSecurity === 'disc' || el.style.webkitTextSecurity === '') {
+        el.style.webkitTextSecurity = 'none';
+        icon.classList.replace('bi-eye-slash','bi-eye');
+    } else {
+        el.style.webkitTextSecurity = 'disc';
+        icon.classList.replace('bi-eye','bi-eye-slash');
+    }
+}
+$(function(){
+    const dtOpts = {
+        language:{
+            sLengthMenu:"_MENU_ ta",sZeroRecords:"Topilmadi",
+            sInfo:"_TOTAL_ tadan _START_–_END_",sSearch:"Qidirish:",
+            oPaginate:{sNext:"Keyingi",sPrevious:"Oldingi"}
+        },
+        pageLength:15, order:[[4,'desc']]
+    };
+    if($('#groupsTable').length)   $('#groupsTable').DataTable(dtOpts);
+    if($('#channelsTable').length) $('#channelsTable').DataTable(dtOpts);
+});
+</script>
+{% endblock %}

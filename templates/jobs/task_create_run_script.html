@@ -1,0 +1,282 @@
+{% extends 'base.html' %}
+{% load crispy_forms_tags %}
+{% block content %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/lipis/flag-icons@7.2.3/css/flag-icons.min.css" />
+
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+        <a href="{% url 'jobs:script_list' %}" class="text-muted text-decoration-none small">
+            <i class="bi bi-arrow-left me-1"></i>Skriptlar
+        </a>
+        <h2 class="fw-bold mb-1 mt-1"><i class="bi bi-terminal-fill text-primary me-2"></i>Skript ishga tushirish</h2>
+        <p class="text-muted mb-0">Avval filterlash bilan akkauntlarni tanlang, keyin skript va parametrlar</p>
+    </div>
+</div>
+
+<div class="alert alert-danger border-0 shadow-sm rounded-4">
+    <strong><i class="bi bi-shield-lock me-1"></i>Xavfsizlik:</strong>
+    Skript serverda to'g'ridan-to'g'ri bajariladi. Ishga tushirish oldidan kodni tekshirib chiqing.
+</div>
+
+<div class="row g-3">
+    <!-- ── Akkauntlar tanlash (chap, keng) ───────────────────────────── -->
+    <div class="col-lg-9">
+        <!-- Filter (alohida GET form) -->
+        <form method="get" class="card shadow-sm mb-3">
+            <div class="card-header bg-white border-bottom py-3">
+                <span class="fw-bold"><i class="bi bi-funnel me-2"></i>Filtrlash</span>
+            </div>
+            <div class="card-body">
+                <div class="row g-2">
+                    <div class="col-md-4">{{ filterset.form.search }}</div>
+                    <div class="col-md-2">{{ filterset.form.is_active }}</div>
+                    <div class="col-md-2">{{ filterset.form.is_spam }}</div>
+                    <div class="col-md-2">{{ filterset.form.country_code }}</div>
+                    <div class="col-md-2">{{ filterset.form.tags }}</div>
+                </div>
+                <div class="mt-3 d-flex gap-2">
+                    <button type="submit" class="btn btn-warning rounded-pill px-4 fw-bold text-dark">
+                        <i class="bi bi-search me-1"></i>Filtrlash
+                    </button>
+                    <a href="{% url 'jobs:task_create_run_script' %}" class="btn btn-light rounded-pill px-4">
+                        <i class="bi bi-x me-1"></i>Tozalash
+                    </a>
+                    {% for aid in seed_ids %}
+                    <input type="hidden" name="account_ids" value="{{ aid }}">
+                    {% endfor %}
+                </div>
+            </div>
+        </form>
+
+        <!-- Akkauntlar jadvali (POST form ichida) -->
+        <form method="post" id="run-script-form">
+            {% csrf_token %}
+
+            <div class="card shadow-sm mb-3">
+                <div class="card-header bg-white border-bottom py-3 d-flex flex-wrap align-items-center gap-2">
+                    <span class="fw-bold"><i class="bi bi-person-check me-2"></i>Akkauntlar</span>
+                    <span class="badge bg-light text-dark border rounded-pill ms-2">Filtrlangan: {{ accounts|length }}</span>
+                    <span class="badge bg-primary rounded-pill ms-2" id="selected-count">Tanlangan: 0</span>
+                    <div class="ms-auto d-flex gap-2">
+                        <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3" id="select-filtered">
+                            <i class="bi bi-check2-all me-1"></i>Hammasini tanlash
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3" id="clear-selection">
+                            <i class="bi bi-x-lg me-1"></i>Bekor
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body p-0" style="max-height: 500px; overflow-y: auto;">
+                    {% if accounts %}
+                    <table class="table table-hover mb-0 align-middle">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th class="ps-4" style="width: 44px;">
+                                    <input type="checkbox" id="select-all" class="form-check-input">
+                                </th>
+                                <th>Telefon / Ism</th>
+                                <th>Davlat</th>
+                                <th>Teglar</th>
+                                <th>Holat</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for a in accounts %}
+                            <tr>
+                                <td class="ps-4">
+                                    <input type="checkbox" name="selected" value="{{ a.id }}"
+                                           class="form-check-input row-check"
+                                           {% if a.id in seed_ids %}checked{% endif %}>
+                                </td>
+                                <td>
+                                    <div class="fw-bold">{{ a.phone_number }}</div>
+                                    <small class="text-muted">{{ a.first_name|default:"Nomsiz" }} {{ a.last_name|default:'' }}</small>
+                                </td>
+                                <td>
+                                    {% if a.country_code %}
+                                    <span class="badge bg-light text-dark border">
+                                        <span class="fi fi-{{ a.country_code|lower }}"></span> {{ a.country_code }}
+                                    </span>
+                                    {% else %}<span class="text-muted">—</span>{% endif %}
+                                </td>
+                                <td>
+                                    {% for tag in a.tags.all %}
+                                    <span class="badge bg-secondary bg-opacity-10 text-secondary border">{{ tag.name }}</span>
+                                    {% empty %}<span class="text-muted small">—</span>{% endfor %}
+                                </td>
+                                <td>
+                                    {% if a.is_active %}
+                                    <span class="badge bg-success bg-opacity-10 text-success border border-success">Aktiv</span>
+                                    {% else %}
+                                    <span class="badge bg-danger bg-opacity-10 text-danger border border-danger">Aktivmas</span>
+                                    {% endif %}
+                                    {% if a.is_spam %}
+                                    <span class="badge bg-warning bg-opacity-10 text-warning border border-warning">Spam</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}
+                    <div class="text-center py-5 text-muted">
+                        <i class="bi bi-inbox fs-1 opacity-25 d-block mb-2"></i>
+                        Filtrga mos akkaunt yo'q. Filtrni o'zgartiring.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Skript va parametrlar -->
+            <div class="card shadow-sm mb-3">
+                <div class="card-header bg-white border-bottom py-3">
+                    <span class="fw-bold"><i class="bi bi-sliders me-2"></i>Skript va parametrlar</span>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label class="form-label fw-bold small text-uppercase text-muted">Skript shabloni</label>
+                            <select name="script_id" required class="form-select rounded-pill bg-light border-0">
+                                {% for s in scripts %}
+                                <option value="{{ s.pk }}">{{ s.name }} — {{ s.description|truncatechars:60 }}</option>
+                                {% endfor %}
+                            </select>
+                            <small class="text-muted">
+                                <a href="{% url 'jobs:script_list' %}">Skriptlarni boshqarish</a>
+                            </small>
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label fw-bold small text-uppercase text-muted">Parametrlar (JSON)</label>
+                            <textarea name="script_params_json" rows="6" class="form-control font-monospace"
+                                      placeholder='{"keep_titles": ["Important"], "max_leaves": 50}'>{}</textarea>
+                            <small class="text-muted">
+                                Skript ichida <code>params</code> orqali kirasiz. Dict kutiladi.
+                                Har skript boshida qanday parametrlar kerakligi yozilgan.
+                            </small>
+                        </div>
+
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold small text-uppercase text-muted">Min pauza (s)</label>
+                            <input type="number" name="delay_min_sec" value="15" min="0" step="0.5" required
+                                   class="form-control rounded-pill bg-light border-0">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold small text-uppercase text-muted">Max pauza (s)</label>
+                            <input type="number" name="delay_max_sec" value="45" min="0" step="0.5" required
+                                   class="form-control rounded-pill bg-light border-0">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold small text-uppercase text-muted">Parallel</label>
+                            <input type="number" name="concurrency" value="3" min="1" max="20" required
+                                   class="form-control rounded-pill bg-light border-0">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold small text-uppercase text-muted">Min yoshi (daq)</label>
+                            <input type="number" name="min_account_age_minutes" value="30" min="0"
+                                   class="form-control rounded-pill bg-light border-0">
+                        </div>
+
+                        <div class="col-12">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="skip_inactive" name="skip_inactive" checked>
+                                <label class="form-check-label" for="skip_inactive">Nofaol akkauntlar skip</label>
+                            </div>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="skip_spam" name="skip_spam" checked>
+                                <label class="form-check-label" for="skip_spam">Spam akkauntlar skip</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- ── O'ng panel: schedule + submit ─────────────────────────────── -->
+    <div class="col-lg-3">
+        <div class="position-sticky" style="top: 20px;">
+            <!-- Submit form'ga tegishli bo'lishi uchun form="run-script-form" attribute ishlatamiz -->
+            <div class="card shadow-sm mb-3">
+                <div class="card-body text-center">
+                    <small class="text-muted text-uppercase fw-bold">Tanlangan</small>
+                    <div class="display-6 fw-bold text-primary mb-0" id="selected-count-big">0</div>
+                    <small class="text-muted">akkaunt</small>
+                </div>
+            </div>
+
+            <div form="run-script-form">
+                <!-- Schedule block goes inside the form -->
+            </div>
+
+            <button type="submit" form="run-script-form"
+                    class="btn btn-gradient rounded-pill w-100 py-3 fw-bold shadow"
+                    id="submit-btn" disabled>
+                <i class="bi bi-play-fill me-1"></i>Ishga tushirish
+            </button>
+            <small class="text-muted d-block text-center mt-2" id="submit-hint">
+                Avval kamida 1 ta akkauntni belgilang
+            </small>
+        </div>
+    </div>
+</div>
+
+<!-- Schedule fields are appended into the POST form via JS so they stay inside the right <form> -->
+<template id="schedule-template">
+    {% include 'jobs/_schedule_block.html' %}
+</template>
+
+<script>
+(function() {
+    // Move the schedule block into the POST form so its inputs are submitted.
+    const tpl = document.getElementById('schedule-template');
+    const form = document.getElementById('run-script-form');
+    if (tpl && form) {
+        form.appendChild(tpl.content.cloneNode(true));
+    }
+
+    const selectAll = document.getElementById('select-all');
+    const checks = document.querySelectorAll('.row-check');
+    const selectFiltered = document.getElementById('select-filtered');
+    const clearSelection = document.getElementById('clear-selection');
+    const counter = document.getElementById('selected-count');
+    const counterBig = document.getElementById('selected-count-big');
+    const submitBtn = document.getElementById('submit-btn');
+    const submitHint = document.getElementById('submit-hint');
+
+    function updateCount() {
+        const checkedRows = document.querySelectorAll('.row-check:checked');
+        const n = checkedRows.length;
+        counter.textContent = `Tanlangan: ${n}`;
+        counterBig.textContent = n;
+        submitBtn.disabled = n === 0;
+        submitHint.style.display = n === 0 ? '' : 'none';
+
+        // Sync select-all state
+        if (selectAll) {
+            const visible = document.querySelectorAll('.row-check').length;
+            selectAll.checked = n > 0 && n === visible;
+            selectAll.indeterminate = n > 0 && n < visible;
+        }
+    }
+
+    if (selectAll) {
+        selectAll.addEventListener('change', () => {
+            checks.forEach(c => c.checked = selectAll.checked);
+            updateCount();
+        });
+    }
+    selectFiltered.addEventListener('click', () => {
+        checks.forEach(c => c.checked = true);
+        updateCount();
+    });
+    clearSelection.addEventListener('click', () => {
+        checks.forEach(c => c.checked = false);
+        updateCount();
+    });
+    checks.forEach(c => c.addEventListener('change', updateCount));
+
+    updateCount();
+})();
+</script>
+{% endblock %}

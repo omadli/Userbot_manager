@@ -1,0 +1,108 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="fw-bold mb-0"><i class="bi bi-megaphone-fill text-primary me-2"></i>Kanallar</h2>
+    <span class="badge bg-primary bg-opacity-10 text-primary rounded-pill px-3 py-2 fs-6">
+        Jami: {{ channels|length }}
+    </span>
+</div>
+
+<!-- Filters -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="get" id="filter-form">
+            <div class="row g-2">
+                <div class="col-md-5">{{ filterset.form.search }}</div>
+                <div class="col-md-4">{{ filterset.form.owner }}</div>
+                <div class="col-md-3">{{ filterset.form.o }}</div>
+            </div>
+            <div class="d-flex gap-2 mt-3">
+                <button type="submit" class="btn btn-gradient rounded-pill px-4">
+                    <i class="bi bi-search me-1"></i>Filtrlash
+                </button>
+                <a href="{% url 'channels:list' %}" class="btn btn-outline-secondary rounded-pill px-4">
+                    <i class="bi bi-x-lg me-1"></i>Tozalash
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Bulk Actions -->
+<form method="post" id="bulk-form">
+    {% csrf_token %}
+    <div class="card">
+        <!-- Bulk action bar -->
+        <div class="card-header bg-white d-flex flex-wrap gap-2 align-items-center border-bottom py-3">
+            <button type="submit" name="bulk_action" value="export_filtered"
+                    class="btn btn-sm btn-outline-success rounded-pill px-3"
+                    formaction="{% url 'channels:list' %}?{{ request.GET.urlencode }}">
+                <i class="bi bi-file-earmark-arrow-down me-1"></i>CSV (Filtrlangan)
+            </button>
+            <button type="submit" name="bulk_action" value="export_selected"
+                    class="btn btn-sm btn-outline-primary rounded-pill px-3">
+                <i class="bi bi-download me-1"></i>CSV (Tanlangan)
+            </button>
+            <button type="submit" name="bulk_action" value="delete"
+                    class="btn btn-sm btn-outline-danger rounded-pill px-3 ms-auto"
+                    onclick="return confirm('Tanlangan kanallarni o\'chirishni tasdiqlaysizmi?');">
+                <i class="bi bi-trash3 me-1"></i>O'chirish
+            </button>
+        </div>
+
+        <div class="card-body p-0">
+            {% if channels %}
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-4" style="width:44px;">
+                            <input type="checkbox" class="form-check-input" id="select-all">
+                        </th>
+                        <th>Kanal nomi</th>
+                        <th>Telegram ID</th>
+                        <th>Akkaunt</th>
+                        <th>Invite link</th>
+                        <th>Sana</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for channel in channels %}
+                    <tr>
+                        <td class="ps-4">
+                            <input type="checkbox" name="selected" value="{{ channel.id }}" class="form-check-input row-check">
+                        </td>
+                        <td class="fw-semibold">{{ channel.name }}</td>
+                        <td><code class="text-muted">{{ channel.telegram_id }}</code></td>
+                        <td>
+                            <span class="badge bg-light text-dark border rounded-pill px-2">
+                                <i class="bi bi-person-circle me-1"></i>{{ channel.owner }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if channel.invite_link %}
+                            <a href="{{ channel.invite_link }}" target="_blank" class="btn btn-sm btn-outline-secondary rounded-pill px-2 py-0">
+                                <i class="bi bi-link-45deg"></i>
+                            </a>
+                            {% else %}<span class="text-muted">—</span>{% endif %}
+                        </td>
+                        <td class="text-muted small">{{ channel.created_at|date:"d.m.Y" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="text-center py-5 text-muted">
+                <i class="bi bi-megaphone fs-1 opacity-25 d-block mb-2"></i>
+                Kanallar topilmadi.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</form>
+
+<script>
+document.getElementById('select-all').addEventListener('change', function () {
+    document.querySelectorAll('.row-check').forEach(cb => cb.checked = this.checked);
+});
+</script>
+{% endblock %}

@@ -1,0 +1,256 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="fw-bold mb-1"><i class="bi bi-bar-chart-fill text-primary me-2"></i>Statistika</h2>
+        <p class="text-muted mb-0">Vazifalar, akkauntlar va hodisalar bo'yicha umumiy ko'rsatkichlar</p>
+    </div>
+    <a href="{% url 'jobs:task_list' %}" class="btn btn-outline-primary rounded-pill px-3">
+        <i class="bi bi-hdd-stack me-1"></i>Vazifalarga qaytish
+    </a>
+</div>
+
+<!-- Summary cards -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body text-center">
+                <small class="text-muted text-uppercase fw-bold">Jami tasklar</small>
+                <div class="h3 fw-bold mb-0 mt-1">{{ totals.total_tasks }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body text-center">
+                <small class="text-muted text-uppercase fw-bold">Bugungi tasklar</small>
+                <div class="h3 fw-bold mb-0 mt-1 text-primary">{{ totals.tasks_today }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body text-center">
+                <small class="text-muted text-uppercase fw-bold">Bugungi ops</small>
+                <div class="h3 fw-bold mb-0 mt-1 text-success">{{ totals.ops_today }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body text-center">
+                <small class="text-muted text-uppercase fw-bold">Bugungi xatolar</small>
+                <div class="h3 fw-bold mb-0 mt-1 text-danger">{{ totals.errors_today }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body text-center">
+                <small class="text-muted text-uppercase fw-bold">Ishlamoqda</small>
+                <div class="h3 fw-bold mb-0 mt-1 text-info">{{ totals.running_tasks }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body text-center">
+                <small class="text-muted text-uppercase fw-bold">Jadvalda</small>
+                <div class="h3 fw-bold mb-0 mt-1 text-warning">{{ totals.scheduled_tasks }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Time-series chart -->
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-white border-bottom py-3">
+        <span class="fw-bold"><i class="bi bi-graph-up me-2"></i>Oxirgi 30 kun: success / error</span>
+    </div>
+    <div class="card-body">
+        <canvas id="timeSeriesChart" height="80"></canvas>
+    </div>
+</div>
+
+<div class="row g-3">
+    <!-- Per-kind breakdown -->
+    <div class="col-lg-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-white border-bottom py-3">
+                <span class="fw-bold"><i class="bi bi-collection me-2"></i>Task turlari bo'yicha</span>
+            </div>
+            <div class="card-body p-0">
+                {% if kind_stats %}
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="ps-4">Turi</th>
+                            <th class="text-end">Tasklar</th>
+                            <th class="text-end">Jami ops</th>
+                            <th class="text-end">Muvaff.</th>
+                            <th class="text-end">Xato</th>
+                            <th class="text-end pe-4">Rate</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for r in kind_stats %}
+                        <tr>
+                            <td class="ps-4">{{ r.label }}</td>
+                            <td class="text-end fw-bold">{{ r.task_count }}</td>
+                            <td class="text-end">{{ r.total_ops|default:0 }}</td>
+                            <td class="text-end text-success">{{ r.success|default:0 }}</td>
+                            <td class="text-end text-danger">{{ r.errors|default:0 }}</td>
+                            <td class="text-end pe-4">
+                                {% if r.success_rate >= 90 %}
+                                <span class="badge bg-success bg-opacity-10 text-success rounded-pill">{{ r.success_rate }}%</span>
+                                {% elif r.success_rate >= 50 %}
+                                <span class="badge bg-warning bg-opacity-10 text-warning rounded-pill">{{ r.success_rate }}%</span>
+                                {% else %}
+                                <span class="badge bg-danger bg-opacity-10 text-danger rounded-pill">{{ r.success_rate }}%</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="text-center py-4 text-muted"><i class="bi bi-inbox fs-2 opacity-25 d-block mb-2"></i>Ma'lumot yo'q</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Status breakdown -->
+    <div class="col-lg-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-white border-bottom py-3">
+                <span class="fw-bold"><i class="bi bi-pie-chart me-2"></i>Task holatlari</span>
+            </div>
+            <div class="card-body p-0">
+                {% if status_stats %}
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="ps-4">Holat</th>
+                            <th class="text-end pe-4">Soni</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for r in status_stats %}
+                        <tr>
+                            <td class="ps-4">{{ r.label }}</td>
+                            <td class="text-end pe-4 fw-bold">{{ r.count }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="text-center py-4 text-muted"><i class="bi bi-inbox fs-2 opacity-25 d-block mb-2"></i>Ma'lumot yo'q</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Top accounts -->
+<div class="card shadow-sm mt-4">
+    <div class="card-header bg-white border-bottom py-3">
+        <span class="fw-bold"><i class="bi bi-trophy me-2"></i>Eng faol akkauntlar (top 20)</span>
+    </div>
+    <div class="card-body p-0">
+        {% if top_accounts %}
+        <table class="table table-hover mb-0 align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th class="ps-4">Akkaunt</th>
+                    <th class="text-end">Jami ops</th>
+                    <th class="text-end">Muvaff.</th>
+                    <th class="text-end">Xato</th>
+                    <th class="text-end pe-4">Rate</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in top_accounts %}
+                <tr>
+                    <td class="ps-4">
+                        <a href="{% url 'accounts:account_detail' r.account__id %}" class="fw-bold text-dark text-decoration-none">
+                            {{ r.account__phone_number }}
+                        </a>
+                        <small class="text-muted">{{ r.account__first_name|default:'' }}</small>
+                        {% if not r.account__is_active %}<span class="badge bg-danger bg-opacity-10 text-danger ms-1">Nofaol</span>{% endif %}
+                        {% if r.account__is_spam %}<span class="badge bg-warning bg-opacity-10 text-warning">Spam</span>{% endif %}
+                    </td>
+                    <td class="text-end fw-bold">{{ r.total }}</td>
+                    <td class="text-end text-success">{{ r.success }}</td>
+                    <td class="text-end text-danger">{{ r.errors }}</td>
+                    <td class="text-end pe-4">
+                        {% if r.success_rate >= 90 %}
+                        <span class="badge bg-success bg-opacity-10 text-success rounded-pill">{{ r.success_rate }}%</span>
+                        {% elif r.success_rate >= 50 %}
+                        <span class="badge bg-warning bg-opacity-10 text-warning rounded-pill">{{ r.success_rate }}%</span>
+                        {% else %}
+                        <span class="badge bg-danger bg-opacity-10 text-danger rounded-pill">{{ r.success_rate }}%</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="text-center py-4 text-muted"><i class="bi bi-inbox fs-2 opacity-25 d-block mb-2"></i>Ma'lumot yo'q</div>
+        {% endif %}
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script id="days-data" type="application/json">{{ days_json|safe }}</script>
+<script>
+    (function() {
+        const data = JSON.parse(document.getElementById('days-data').textContent);
+        const labels = data.map(d => d.date.slice(5));  // MM-DD
+        const success = data.map(d => d.success);
+        const error   = data.map(d => d.error);
+
+        new Chart(document.getElementById('timeSeriesChart'), {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [
+                    {
+                        label: 'Success',
+                        data: success,
+                        borderColor: '#22c55e',
+                        backgroundColor: 'rgba(34, 197, 94, 0.12)',
+                        fill: true,
+                        tension: 0.3,
+                        borderWidth: 2,
+                        pointRadius: 2,
+                    },
+                    {
+                        label: 'Error',
+                        data: error,
+                        borderColor: '#ef4444',
+                        backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                        fill: true,
+                        tension: 0.3,
+                        borderWidth: 2,
+                        pointRadius: 2,
+                    },
+                ],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { beginAtZero: true, ticks: { precision: 0 } },
+                },
+                plugins: {
+                    legend: { position: 'top' },
+                    tooltip: { mode: 'index', intersect: false },
+                },
+                interaction: { mode: 'nearest', axis: 'x', intersect: false },
+            },
+        });
+    })();
+</script>
+{% endblock %}

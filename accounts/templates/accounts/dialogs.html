@@ -1,0 +1,262 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/lipis/flag-icons@7.2.3/css/flag-icons.min.css" />
+
+<!-- Header -->
+<div class="row mb-4 align-items-center">
+    <div class="col-sm-8">
+        <h3 class="fw-bold mb-1 text-dark">Akkaunt Tafsilotlari</h3>
+        <p class="text-muted mb-0">Platformadagi ushbu telegram akkauntning to'liq axboroti va a'zoliklari</p>
+    </div>
+    <div class="col-sm-4 text-sm-end mt-3 mt-sm-0">
+        <a href="{% url 'accounts:dashboard' %}" class="btn btn-light border shadow-sm rounded-pill px-4 fw-bold text-dark">
+            <i class="bi bi-arrow-left me-1"></i> Orqaga
+        </a>
+    </div>
+</div>
+
+<!-- Account Profile Card -->
+<div class="card shadow-sm border-0 mb-4 rounded-4 overflow-hidden">
+    <div class="card-body p-0">
+        <div class="row g-0">
+            <!-- Left Side / Avatar & Basic Info -->
+            <div class="col-md-4 bg-light p-4 p-md-5 text-center border-end d-flex flex-column justify-content-center align-items-center">
+                {% if account.avatar %}
+                <img src="{{ MEDIA_URL }}{{ account.avatar }}" class="rounded-circle shadow-sm mb-3 border border-4 border-white" alt="Avatar" style="width: 140px; height: 140px; object-fit: cover;">
+                {% else %}
+                <img src="https://ui-avatars.com/api/?name={{ account.first_name|urlencode|default:'T' }}+{{ account.last_name|urlencode|default:'A' }}&background=e0e7ff&color=4f46e5&size=140&bold=true" class="rounded-circle shadow-sm mb-3 border border-4 border-white" alt="Avatar">
+                {% endif %}
+                
+                <h4 class="fw-bold text-dark mb-1">
+                    {% if account.first_name %}{{ account.first_name }} {{ account.last_name|default:'' }}{% else %}Nomsiz Akkaunt{% endif %}
+                </h4>
+                
+                {% if account.username %}
+                <a href="https://t.me/{{ account.username }}" target="_blank" class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 rounded-pill px-3 py-2 text-decoration-none mb-3 font-monospace fs-6">
+                    @{{ account.username }}
+                </a>
+                {% endif %}
+                
+                <div class="d-flex gap-2 justify-content-center mt-2 w-100 px-3">
+                    {% if account.is_active %}
+                    <span class="badge bg-success bg-opacity-10 text-success border border-success px-4 py-2 w-50 rounded-pill"><i class="bi bi-check-circle me-1"></i>Aktiv</span>
+                    {% else %}
+                    <span class="badge bg-danger bg-opacity-10 text-danger border border-danger px-4 py-2 w-50 rounded-pill"><i class="bi bi-dash-circle me-1"></i>Aktivmas</span>
+                    {% endif %}
+                    
+                    {% if account.is_spam %}
+                    <span class="badge bg-danger text-white border border-danger px-4 py-2 w-50 rounded-pill shadow-sm"><i class="bi bi-x-circle me-1"></i>Spam</span>
+                    {% else %}
+                    <span class="badge bg-success bg-opacity-10 text-success border border-success px-4 py-2 w-50 rounded-pill"><i class="bi bi-shield-check me-1"></i>Spammas</span>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- Right Side / Metadata Properties -->
+            <div class="col-md-8 p-4 p-md-5">
+                <h5 class="fw-bold text-dark mb-4 border-bottom pb-3"><i class="bi bi-person-lines-fill text-muted me-2"></i>Asosiy Ma'lumotlar</h5>
+                <div class="row g-4">
+                    <!-- Phone -->
+                    <div class="col-sm-6">
+                        <p class="text-muted small fw-bold text-uppercase mb-1" style="letter-spacing: 0.5px;">Telefon Raqam</p>
+                        <a href="https://t.me/{{ account.phone_number|urlencode }}" target="_blank" class="fw-bold fs-5 text-primary text-decoration-none">
+                            <i class="bi bi-telephone-fill me-1 small"></i> {{ account.phone_number }}
+                        </a>
+                    </div>
+                    <!-- Country -->
+                    <div class="col-sm-6">
+                        <p class="text-muted small fw-bold text-uppercase mb-1" style="letter-spacing: 0.5px;">Davlat</p>
+                        <span class="fs-5 fw-medium text-dark">
+                            <span class="fi fi-{{ account.country_code|lower }} me-2 border border-secondary border-opacity-25 rounded-1 shadow-sm" style="font-size: 1.2rem;"></span>
+                            {{ account.country_code|default:'Noma\'lum' }}
+                        </span>
+                    </div>
+                    <!-- Email -->
+                    <div class="col-sm-6">
+                        <p class="text-muted small fw-bold text-uppercase mb-1" style="letter-spacing: 0.5px;">Kirish Email manzili</p>
+                        <span class="fw-medium text-dark d-block fs-6 text-truncate align-middle mt-1">
+                            <span class="bg-light px-3 py-1 rounded-pill border">
+                                <i class="bi bi-envelope-fill text-muted me-1"></i> {{ account.email|default:"Bizga biriktirilmagan" }}
+                            </span>
+                        </span>
+                    </div>
+                    <!-- 2FA Password -->
+                    <div class="col-sm-6">
+                        <p class="text-muted small fw-bold text-uppercase mb-1" style="letter-spacing: 0.5px;">2-Bosqichli Parol (2FA)</p>
+                        <span class="fw-bold text-dark font-monospace fs-6 px-3 py-2 bg-light border rounded-pill d-inline-flex align-items-center mt-1">
+                            <i class="bi bi-key-fill text-warning fs-5 align-middle me-2"></i>
+                            {% if account.two_fa_password %}
+                                <span id="pwdText{{ account.id }}" style="-webkit-text-security: disc; user-select: none;">{{ account.two_fa_password }}</span>
+                                <i class="bi bi-eye-slash-fill ms-3 text-muted" onclick="togglePwd(this, 'pwdText{{ account.id }}')" style="cursor: pointer; font-size: 1.1rem;"></i>
+                            {% else %}
+                                <span class="text-muted small">Yo'q o'rnatilmagan</span>
+                            {% endif %}
+                        </span>
+                    </div>
+                    <!-- Created At -->
+                    <div class="col-sm-6">
+                        <p class="text-muted small fw-bold text-uppercase mb-1 pt-2" style="letter-spacing: 0.5px;">Tizimga Qo'shilgan Vaqt</p>
+                        <span class="fw-medium text-dark fs-6">
+                            <i class="bi bi-calendar-check-fill text-success text-opacity-75 me-1"></i> {{ account.created_at|date:"d M, Y / H:i" }}
+                        </span>
+                    </div>
+                    <!-- User ID -->
+                    <div class="col-sm-6">
+                        <p class="text-muted small fw-bold text-uppercase mb-1 pt-2" style="letter-spacing: 0.5px;">Telegram ID raqami</p>
+                        <span class="fw-medium text-muted font-monospace fs-6 bg-light px-2 py-1 border rounded disabled d-inline-block">
+                            #{{ account.user_id|default:"Aniqlanmagan" }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Stats Navigation Pills -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="d-flex flex-wrap gap-3 bg-light p-3 rounded-4 border shadow-sm">
+            <div class="d-flex align-items-center bg-white border border-info border-opacity-50 rounded-pill px-4 py-2" style="min-width: 250px;">
+                <i class="bi bi-people-fill text-info fs-2 me-3"></i>
+                <div>
+                    <p class="text-muted small mb-0 fw-bold text-uppercase" style="letter-spacing: 0.5px;">Guruhlar</p>
+                    <h4 class="fw-bold text-dark mb-0 d-inline">{{ groups|length }}</h4>
+                    <span class="text-muted ms-1 fs-6">ta guruh mavjud</span>
+                </div>
+            </div>
+            
+            <div class="d-flex align-items-center bg-white border border-primary border-opacity-50 rounded-pill px-4 py-2" style="min-width: 250px;">
+                <i class="bi bi-megaphone-fill text-primary fs-2 me-3"></i>
+                <div>
+                    <p class="text-muted small mb-0 fw-bold text-uppercase" style="letter-spacing: 0.5px;">Kanallar</p>
+                    <h4 class="fw-bold text-dark mb-0 d-inline">{{ channels|length }}</h4>
+                    <span class="text-muted ms-1 fs-6">ta kanal mavjud</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tables Area -->
+<div class="row">
+    <!-- Guruhlar Section -->
+    <div class="col-md-6 mb-4">
+        <div class="card shadow-sm border-0 rounded-4 overflow-hidden h-100">
+            <div class="card-header bg-white border-bottom py-3">
+                <h6 class="fw-bold mb-0 text-dark"><i class="bi bi-people-fill text-info me-2"></i>Qatnashayotgan Guruhlar</h6>
+            </div>
+            <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                <table class="table table-hover align-middle mb-0 datatable-dialogs">
+                    <thead class="bg-light sticky-top shadow-sm">
+                        <tr>
+                            <th class="ps-3 text-muted border-bottom-0" style="font-size: 0.85rem;">№</th>
+                            <th class="text-muted border-bottom-0" style="font-size: 0.85rem;">GURUH NOMI</th>
+                            <th class="text-muted border-bottom-0" style="font-size: 0.85rem;">YARATILGAN</th>
+                            <th class="text-muted border-bottom-0 text-end pe-4" style="font-size: 0.85rem;">ID</th>
+                        </tr>
+                    </thead>
+                    <tbody class="border-top-0">
+                        {% for g in groups %}
+                        <tr>
+                            <td class="ps-3 text-muted fw-medium">{{ forloop.counter }}</td>
+                            <td>
+                                <div class="fw-bold text-dark text-truncate" style="max-width: 200px;">{{ g.name }}</div>
+                            </td>
+                            <td>
+                                <span class="text-muted small">{{ g.created_at|date:"Y-m-d H:i" }}</span>
+                            </td>
+                            <td class="text-end pe-4">
+                                <span class="badge bg-light text-muted border font-monospace px-2 py-1">{{ g.telegram_id }}</span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Kanallar Section -->
+    <div class="col-md-6 mb-4">
+        <div class="card shadow-sm border-0 rounded-4 overflow-hidden h-100">
+            <div class="card-header bg-white border-bottom py-3">
+                <h6 class="fw-bold mb-0 text-dark"><i class="bi bi-megaphone-fill text-primary me-2"></i>A'zo bo'lingan Kanallar</h6>
+            </div>
+            <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                <table class="table table-hover align-middle mb-0 datatable-dialogs">
+                    <thead class="bg-light sticky-top shadow-sm">
+                        <tr>
+                            <th class="ps-3 text-muted border-bottom-0" style="font-size: 0.85rem;">№</th>
+                            <th class="text-muted border-bottom-0" style="font-size: 0.85rem;">KANAL NOMI</th>
+                            <th class="text-muted border-bottom-0" style="font-size: 0.85rem;">YARATILGAN</th>
+                            <th class="text-muted border-bottom-0 text-end pe-4" style="font-size: 0.85rem;">ID</th>
+                        </tr>
+                    </thead>
+                    <tbody class="border-top-0">
+                        {% for c in channels %}
+                        <tr>
+                            <td class="ps-3 text-muted fw-medium">{{ forloop.counter }}</td>
+                            <td>
+                                <div class="fw-bold text-dark text-truncate" style="max-width: 200px;">{{ c.name }}</div>
+                            </td>
+                            <td>
+                                <span class="text-muted small">{{ c.created_at|date:"Y-m-d H:i" }}</span>
+                            </td>
+                            <td class="text-end pe-4">
+                                <span class="badge bg-light text-muted border font-monospace px-2 py-1">{{ c.telegram_id }}</span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function togglePwd(iconElement, textId) {
+    var textEl = document.getElementById(textId);
+    if (textEl.style.webkitTextSecurity === 'disc') {
+        textEl.style.webkitTextSecurity = 'none';
+        iconElement.classList.replace('bi-eye-slash-fill', 'bi-eye-fill');
+        iconElement.classList.replace('text-muted', 'text-primary');
+    } else {
+        textEl.style.webkitTextSecurity = 'disc';
+        iconElement.classList.replace('bi-eye-fill', 'bi-eye-slash-fill');
+        iconElement.classList.replace('text-primary', 'text-muted');
+    }
+}
+</script>
+
+<!-- DataTables Requirements -->
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" />
+<script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+<script>
+$(document).ready(function() {
+    $('.datatable-dialogs').DataTable({
+        "language": {
+            "sLengthMenu": "_MENU_ yozuv",
+            "sZeroRecords": "Hech qanday ma'lumot topilmadi",
+            "sInfo": "_TOTAL_ ta yozuvdan _START_ dan _END_ gacha",
+            "sInfoEmpty": "Yozuvlar yo'q",
+            "sInfoFiltered": "(_MAX_ ta yozuvdan filtrlangan)",
+            "sSearch": "Qidirish:",
+            "oPaginate": {
+                "sFirst": "Birinchi",
+                "sLast": "Oxirgi",
+                "sNext": "Keyingi",
+                "sPrevious": "Oldingi"
+            }
+        },
+        "order": [[ 2, "desc" ]],
+        "pageLength": 10,
+        "lengthMenu": [5, 10, 25, 50]
+    });
+});
+</script>
+{% endblock %}

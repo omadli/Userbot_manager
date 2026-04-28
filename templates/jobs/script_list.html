@@ -1,0 +1,111 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="fw-bold mb-1"><i class="bi bi-terminal-fill text-primary me-2"></i>Skript shablonlari</h2>
+        <p class="text-muted mb-0"><i class="bi bi-shield-lock-fill text-danger me-1"></i>Faqat adminlar uchun — ixtiyoriy Python kod</p>
+    </div>
+    <div class="d-flex gap-2">
+        {% if scripts %}
+        <a href="{% url 'jobs:task_create_run_script' %}" class="btn btn-success rounded-pill px-4 shadow-sm py-2">
+            <i class="bi bi-play-fill me-1"></i> Ishga tushirish
+        </a>
+        {% endif %}
+        <button type="button" class="btn btn-gradient rounded-pill px-4 shadow-sm py-2"
+                data-bs-toggle="modal" data-bs-target="#newScriptModal">
+            <i class="bi bi-plus-lg me-1"></i> Yangi skript
+        </button>
+    </div>
+</div>
+
+<div class="alert alert-danger border-0 shadow-sm rounded-4">
+    <strong><i class="bi bi-exclamation-triangle-fill me-1"></i>Xavfsizlik:</strong>
+    Bu bo'limda yozilgan kod server'da to'g'ridan-to'g'ri bajariladi. <strong>Begona kodni qo'shmang.</strong>
+    Adminlik huquqi hozirda <code>is_superuser=True</code> foydalanuvchilarga berilgan.
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body p-0">
+        {% if scripts %}
+        <table class="table table-hover mb-0 align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th class="ps-4" style="width: 60px;">#</th>
+                    <th>Nomi</th>
+                    <th>Izoh</th>
+                    <th>Yangilangan</th>
+                    <th class="text-end pe-4" style="width: 200px;">Amallar</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in scripts %}
+                <tr>
+                    <td class="ps-4 fw-bold text-muted">#{{ s.pk }}</td>
+                    <td>
+                        <a href="{% url 'jobs:script_detail' s.pk %}" class="text-decoration-none text-dark fw-semibold">{{ s.name }}</a>
+                    </td>
+                    <td class="text-muted small">{{ s.description|truncatechars:80|default:"—" }}</td>
+                    <td class="text-muted small">{{ s.updated_at|date:"d.m.Y H:i" }}</td>
+                    <td class="text-end pe-4">
+                        <a href="{% url 'jobs:script_detail' s.pk %}" class="btn btn-sm btn-primary rounded-pill px-3">
+                            <i class="bi bi-pencil-square me-1"></i>Tahrirlash
+                        </a>
+                        <form method="post" class="d-inline" onsubmit="return confirm('O\'chirasizmi?');">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="delete">
+                            <input type="hidden" name="pk" value="{{ s.pk }}">
+                            <button class="btn btn-sm btn-outline-danger rounded-pill px-2"><i class="bi bi-trash3"></i></button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="text-center py-5 text-muted">
+            <i class="bi bi-terminal fs-1 opacity-25 d-block mb-2"></i>
+            Hali skript yo'q. "Yangi skript" orqali yarating.
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="modal fade" id="newScriptModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content border-0 shadow">
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="create">
+                <div class="modal-header bg-light">
+                    <h5 class="modal-title fw-bold"><i class="bi bi-plus-circle me-2 text-primary"></i>Yangi skript</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-uppercase text-muted">Nomi</label>
+                        <input type="text" name="name" required
+                               placeholder="Masalan: Kanallardan chiqish"
+                               class="form-control rounded-pill bg-light border-0">
+                    </div>
+                    <div class="mb-0">
+                        <label class="form-label fw-bold small text-uppercase text-muted">Starter shablonni tanlang</label>
+                        <select name="template_key" class="form-select rounded-pill bg-light border-0">
+                            <option value="">— Bo'sh skript —</option>
+                            {% for t in starter_templates %}
+                            <option value="{{ t.key }}">{{ t.name }} — {{ t.description|truncatechars:80 }}</option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted">
+                            Tanlangan shablon kod sifatida ko'chiriladi — keyin tahrir qilishingiz mumkin.
+                        </small>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light">
+                    <button type="button" class="btn btn-secondary rounded-pill px-4" data-bs-dismiss="modal">Bekor</button>
+                    <button type="submit" class="btn btn-gradient rounded-pill px-4 fw-bold">Yaratish</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

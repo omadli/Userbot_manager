@@ -1,0 +1,330 @@
+{% extends 'base.html' %}
+{% load crispy_forms_tags %}
+
+{% block content %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/lipis/flag-icons@7.2.3/css/flag-icons.min.css" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" />
+
+{% if inactive_accounts_count %}
+<div class="alert alert-warning border-0 shadow-sm rounded-4 d-flex align-items-center justify-content-between mb-4">
+    <div class="d-flex align-items-center gap-3">
+        <i class="bi bi-exclamation-triangle-fill fs-3 text-warning"></i>
+        <div>
+            <strong>{{ inactive_accounts_count }} ta akkaunt qayta loginni talab qiladi</strong>
+            <div class="small text-muted">Sessiyasi chiqarib yuborilgan akkauntlar. "Aktivmas" filtri bilan topib, "Qayta kirish" ni bosing.</div>
+        </div>
+    </div>
+    <a href="?is_active=False" class="btn btn-warning rounded-pill px-4 fw-bold text-dark">
+        Ko'rsatish <i class="bi bi-arrow-right ms-1"></i>
+    </a>
+</div>
+{% endif %}
+
+<div class="row align-items-end mb-4">
+    <div class="col-sm-8">
+        <h2 class="fw-bold mb-1 text-dark">Akkauntlar</h2>
+        <p class="text-muted mb-0">Tizimga ulangan barcha telegram raqamlarni boshqarish</p>
+    </div>
+    <div class="col-sm-4 text-sm-end mt-3 mt-sm-0">
+        <a href="{% url 'accounts:add_account' %}" class="btn btn-gradient rounded-pill px-4 shadow-sm py-2">
+            <i class="bi bi-plus-lg me-1"></i> Yangi akkaunt
+        </a>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Accounts List -->
+    <div class="col-lg-9 order-2 order-lg-1">
+        <form method="post" action="{% url 'accounts:dashboard' %}">
+            {% csrf_token %}
+            <div class="card shadow-sm border-0 mb-4">
+                
+                <div class="card-header bg-white border-bottom py-3 d-flex flex-wrap justify-content-between align-items-center">
+                    <span class="fw-bold text-dark"><i class="bi bi-list-task me-2"></i>Maxsus Harakatlar (Bulk Actions)</span>
+                    <div class="d-flex gap-2 align-items-center">
+                        <select name="bulk_action" class="form-select form-select-sm rounded-pill bg-light border-0 fw-medium" style="width: auto;">
+                            <option value="">Harakatni tanlang...</option>
+                            <option value="create_groups">👥 Guruh yaratish (bulk)</option>
+                            <option value="create_channels">📢 Kanal yaratish (bulk)</option>
+                            <option value="join_channel">➡️ Kanalga qo'shilish (bulk)</option>
+                            <option value="boost_views">👁️ View oshirish (bulk)</option>
+                            <option value="react_to_post">❤️ Reaksiya qo'yish (bulk)</option>
+                            <option value="vote_poll">📊 So'rovnomada ovoz berish (bulk)</option>
+                            <option value="press_start">🤖 Botga /start (referral)</option>
+                            <option value="account_warming">🔥 Akkauntni warming (isitish)</option>
+                            {% if user.is_superuser %}
+                            <option value="run_script">⚡ Maxsus skript (admin)</option>
+                            {% endif %}
+                            <option value="check_spam">🔍 Spam tekshirish</option>
+                            <option value="deactivate">Belgilanganlarni O'chirish (Aktivmas)</option>
+                            <option value="delete" class="text-danger">Belgilanganlarni O'chirish (Delete)</option>
+                            <option value="export_selected">Belgilanganlarni Export qilish</option>
+                            <option value="export_filtered">Barcha filtrdagilarni Export qilish</option>
+                        </select>
+                        <button type="submit" class="btn btn-sm btn-primary rounded-pill px-3 fw-bold shadow-sm">Bajarish</button>
+                        
+                        <div class="dropdown ms-2">
+                            <button class="btn btn-sm btn-light border fw-medium rounded-pill dropdown-toggle shadow-sm text-dark" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                                <i class="bi bi-gear-fill me-1"></i> Jadval Sozlamalari
+                            </button>
+                            <ul class="dropdown-menu p-3 shadow-lg border-0 dropdown-menu-end" style="min-width: 220px;">
+                                <li><h6 class="dropdown-header px-0 text-dark fw-bold mb-2">Ustunlarni ko'rsatish</h6></li>
+                                <li>
+                                    <div class="form-check form-switch cursor-pointer">
+                                        <input class="form-check-input col-toggle" type="checkbox" id="col-email" data-col="col-email">
+                                        <label class="form-check-label w-100 ms-1 fw-medium" for="col-email">Email manzili</label>
+                                    </div>
+                                </li>
+                                <li>
+                                    <div class="form-check form-switch mt-2 cursor-pointer">
+                                        <input class="form-check-input col-toggle" type="checkbox" id="col-2fa" data-col="col-2fa">
+                                        <label class="form-check-label w-100 ms-1 fw-medium" for="col-2fa">2FA Parol</label>
+                                    </div>
+                                </li>
+                                <li>
+                                    <div class="form-check form-switch mt-2 cursor-pointer">
+                                        <input class="form-check-input col-toggle" type="checkbox" id="col-groups" data-col="col-groups">
+                                        <label class="form-check-label w-100 ms-1 fw-medium" for="col-groups">Guruhlar soni</label>
+                                    </div>
+                                </li>
+                                <li>
+                                    <div class="form-check form-switch mt-2 cursor-pointer">
+                                        <input class="form-check-input col-toggle" type="checkbox" id="col-channels" data-col="col-channels">
+                                        <label class="form-check-label w-100 ms-1 fw-medium" for="col-channels">Kanallar soni</label>
+                                    </div>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0 border-0 text-nowrap">
+                        <thead class="bg-light">
+                            <tr>
+                                <th class="ps-4 py-3 text-muted fw-bold" style="width: 40px;">
+                                    <input class="form-check-input border-secondary" type="checkbox" id="selectAll">
+                                </th>
+                                <th class="py-3 text-muted fw-bold" style="font-size: 0.85rem;">№</th>
+                                <th class="py-3 text-muted fw-bold" style="font-size: 0.85rem;">NOMI/TELEFON</th>
+                                <th class="py-3 text-muted fw-bold" style="font-size: 0.85rem;">DAVLAT</th>
+                                <th class="py-3 text-muted fw-bold col-email d-none" style="font-size: 0.85rem;">EMAIL</th>
+                                <th class="py-3 text-muted fw-bold col-2fa d-none" style="font-size: 0.85rem;">2FA PAROL</th>
+                                <th class="py-3 text-muted fw-bold col-groups d-none" style="font-size: 0.85rem;">GURUH</th>
+                                <th class="py-3 text-muted fw-bold col-channels d-none" style="font-size: 0.85rem;">KANAL</th>
+                                <th class="py-3 text-muted fw-bold" style="font-size: 0.85rem;">TEGLAR</th>
+                                <th class="py-3 text-muted fw-bold" style="font-size: 0.85rem;">HOLATI</th>
+                                <th class="pe-4 py-3 text-end text-muted fw-bold" style="font-size: 0.85rem;">AMALLAR</th>
+                            </tr>
+                        </thead>
+                        <tbody class="border-top-0">
+                            {% for account in accounts %}
+                            <tr>
+                                <td class="ps-4 py-3">
+                                    <input class="form-check-input border-secondary row-checkbox" type="checkbox" name="selected" value="{{ account.id }}">
+                                </td>
+                                <td class="text-muted fw-medium">{{ forloop.counter }}</td>
+                                <td class="py-3">
+                                    <div class="fw-bold text-dark fs-6">
+                                        {% if account.first_name %}{{ account.first_name }} {{ account.last_name|default:'' }}{% else %}Nomsiz{% endif %}
+                                    </div>
+                                    <div class="d-flex align-items-center mt-1">
+                                        <a href="https://t.me/{{ account.phone_number|urlencode }}" target="_blank" class="text-dark fw-bold text-decoration-none small me-2">{{ account.phone_number }}</a>
+                                        {% if account.username %}
+                                        <a href="https://t.me/{{ account.username }}" target="_blank" class="text-primary font-monospace text-decoration-none small badge bg-primary bg-opacity-10 border border-primary border-opacity-25">@{{ account.username }}</a>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="badge bg-light text-dark border fs-6 px-2 py-1">
+                                        <span class="fi fi-{{ account.country_code|lower }} me-1 border border-secondary border-opacity-25 rounded-1"></span>{{ account.country_code|default:'?' }}
+                                    </span>
+                                </td>
+                                <td class="col-email d-none text-muted fw-medium" style="font-size: 0.9rem;">
+                                    {{ account.email|default:"Kiritilmagan" }}
+                                </td>
+                                <td class="col-2fa d-none text-muted fw-medium" style="font-size: 0.9rem;">
+                                    {% if account.two_fa_password %}
+                                    <span class="badge bg-secondary bg-opacity-10 text-dark border px-2 py-1"><i class="bi bi-key me-1"></i>O'rnatilgan</span>
+                                    {% else %}
+                                    Yo'q
+                                    {% endif %}
+                                </td>
+                                <td class="col-groups d-none">
+                                    <span class="badge bg-info bg-opacity-10 text-info border border-info rounded-pill px-2 fs-6" title="Guruhlar soni">Guruh: {{ account.groups_count|default:0 }}</span>
+                                </td>
+                                <td class="col-channels d-none">
+                                    <span class="badge bg-primary bg-opacity-10 text-primary border border-primary rounded-pill px-2 fs-6" title="Kanallar soni">Kanal: {{ account.channels_count|default:0 }}</span>
+                                </td>
+                                <td>
+                                    <div class="d-flex flex-wrap gap-1" style="max-width: 150px;">
+                                        {% for tag in account.tags.all %}
+                                        <span class="badge bg-secondary bg-opacity-10 text-secondary border-secondary border opacity-75">{{ tag.name }}</span>
+                                        {% empty %}
+                                        <span class="text-muted small">Teg yo'q</span>
+                                        {% endfor %}
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="d-flex flex-column gap-1" style="width: 80px;">
+                                        {% if account.is_active %}
+                                        <span class="badge bg-success bg-opacity-10 text-success border border-success px-1 py-1 w-100 text-center">Aktiv</span>
+                                        {% else %}
+                                        <span class="badge bg-danger bg-opacity-10 text-danger border border-danger px-1 py-1 w-100 text-center">Aktivmas</span>
+                                        {% endif %}
+                                        
+                                        {% if account.is_spam %}
+                                        <span class="badge bg-danger text-white border border-danger px-1 py-1 w-100 text-center"><i class="bi bi-x-circle me-1"></i>Spam</span>
+                                        {% else %}
+                                        <span class="badge bg-success bg-opacity-10 text-success border border-success px-1 py-1 w-100 text-center">Spammas</span>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                                <td class="pe-4 text-end">
+                                    <div class="btn-group shadow-sm rounded-pill">
+                                        <a href="{% url 'accounts:account_detail' account.pk %}"
+                                           class="btn btn-sm btn-primary fw-medium border-0 px-3">
+                                            <i class="bi bi-person-gear me-1"></i> Batafsil
+                                        </a>
+                                        <a href="{% url 'accounts:relogin_account' account.pk %}"
+                                           class="btn btn-sm btn-info text-white fw-medium border-0 px-3">
+                                            <i class="bi bi-arrow-clockwise me-1"></i> Qayta kirish
+                                        </a>
+                                    </div>
+                                </td>
+
+
+                            </tr>
+                            
+                            <!-- Modals moved outside scope -->
+                            
+                            {% empty %}
+                            <tr>
+                                <td colspan="11" class="text-center py-5 text-muted">
+                                    <i class="bi bi-inbox fs-1 d-block mb-3 opacity-25"></i>
+                                    Topilmadi.
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </form>
+    </div>
+    
+    <!-- Filters Sidebar -->
+    <div class="col-lg-3 order-1 order-lg-2 mb-4">
+        <form method="get" action="{% url 'accounts:dashboard' %}" class="card p-4 shadow-sm border-0 sticky-top" style="top: 20px;">
+            <h6 class="fw-bold text-uppercase text-muted mb-3" style="font-size: 0.85rem; letter-spacing: 0.5px;">
+                <i class="bi bi-funnel-fill me-1"></i> Filtrlash
+            </h6>
+            <div class="filter-form">
+                {{ filterset.form|crispy }}
+                <button type="submit" class="btn btn-warning w-100 mt-2 fw-bold text-uppercase rounded-pill py-2 shadow-sm text-dark" style="font-size: 0.85rem; letter-spacing: 0.5px;">
+                    Qidirish
+                </button>
+                <a href="{% url 'accounts:dashboard' %}" class="btn btn-light w-100 mt-2 fw-medium rounded-pill py-2 text-decoration-none">Tozalash</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const selectAll = document.getElementById('selectAll');
+        const checkboxes = document.querySelectorAll('.row-checkbox');
+        
+        selectAll.addEventListener('change', function() {
+            checkboxes.forEach(cb => {
+                cb.checked = selectAll.checked;
+            });
+        });
+
+        // Dynamic Columns Memory Toggle
+        const toggles = document.querySelectorAll('.col-toggle');
+        
+        toggles.forEach(toggle => {
+            const colClass = toggle.getAttribute('data-col');
+            const savedState = localStorage.getItem('table-state-' + colClass);
+            
+            // Apply saved state
+            if (savedState === 'true') {
+                toggle.checked = true;
+                document.querySelectorAll('.' + colClass).forEach(el => el.classList.remove('d-none'));
+            }
+            
+            // Watch changes
+            toggle.addEventListener('change', function() {
+                localStorage.setItem('table-state-' + colClass, this.checked);
+                if (this.checked) {
+                    document.querySelectorAll('.' + colClass).forEach(el => el.classList.remove('d-none'));
+                } else {
+                    document.querySelectorAll('.' + colClass).forEach(el => el.classList.add('d-none'));
+                }
+            });
+        });
+    });
+</script>
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+    $(document).ready(function() {
+        function formatCountry (state) {
+            if (!state.id) { return state.text; }
+            var baseUrl = "fi fi-" + state.id.toLowerCase() + " me-2 border border-secondary border-opacity-25 rounded-1";
+            var $state = $(
+                '<span><span class="' + baseUrl + '"></span>' + state.text + '</span>'
+            );
+            return $state;
+        }
+
+        $('.country-select').select2({
+            templateResult: formatCountry,
+            templateSelection: formatCountry,
+            theme: "bootstrap-5",
+            width: '100%',
+            minimumResultsForSearch: Infinity
+        });
+    });
+</script>
+
+<style>
+    /* Prevent text selection when clicking switches rapidly */
+    .form-check-label { user-select: none; }
+</style>
+{% for account in accounts %}
+<!-- Edit Modal -->
+<div class="modal fade" id="editModal{{ account.id }}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header bg-light border-bottom py-3">
+        <h5 class="modal-title fw-bold text-dark"><i class="bi bi-pencil-square me-2 text-warning"></i>Akkauntni tahrirlash</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form action="{% url 'accounts:edit_account' account.id %}" method="POST">
+        {% csrf_token %}
+        <div class="modal-body p-4 text-start">
+          <p class="text-muted small mb-4">Akkaunt xavfsizlik va qo'shimcha ma'lumotlarini qo'lda biriktirib qo'yish imkoniyatiga egasiz.</p>
+          <div class="mb-4">
+             <label class="form-label fw-bold text-muted small text-uppercase">Email manzili</label>
+             <input type="email" class="form-control form-control-lg rounded-pill bg-light border-0" name="email" value="{{ account.email|default:'' }}" placeholder="example@domain.com">
+          </div>
+          <div class="mb-3">
+             <label class="form-label fw-bold text-muted small text-uppercase">2FA Parol</label>
+             <input type="text" class="form-control form-control-lg rounded-pill bg-light border-0" name="two_fa_password" value="{{ account.two_fa_password|default:'' }}" placeholder="Yashirin parol">
+          </div>
+        </div>
+        <div class="modal-footer bg-light border-top py-3">
+          <button type="button" class="btn btn-secondary rounded-pill px-4 fw-medium" data-bs-dismiss="modal">Bekor qilish</button>
+          <button type="submit" class="btn btn-warning rounded-pill px-4 fw-bold text-dark shadow-sm">Saqlash</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endfor %}
+
+{% endblock %}

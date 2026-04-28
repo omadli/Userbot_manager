@@ -1,0 +1,41 @@
+﻿asgiref==3.11.1
+cffi==2.0.0
+crispy-bootstrap5==2026.3
+croniter>=2.0
+cryptography==46.0.7
+django-ratelimit==4.1.0
+diff-match-patch==20241021
+Django==6.0.4
+django-crispy-forms==2.6
+django-filter==25.2
+django-import-export==4.4.0
+phonenumbers==9.0.27
+pyaes==1.6.1
+pyasn1==0.6.3
+pycparser==3.0
+python-dotenv==1.2.2
+python-socks[asyncio]==2.8.1
+rsa==4.9.1
+sqlparse==0.5.5
+tablib==3.9.0
+Telethon==1.43.0
+tzdata==2026.1
+
+# --- Production ---
+# ASGI server (Django 6 + Telethon need async-capable server)
+uvicorn[standard]==0.32.0
+# Static file serving without nginx
+whitenoise==6.7.0
+# PostgreSQL driver (only needed when DB_ENGINE=postgres)
+psycopg2-binary==2.9.10
+
+# --- Optional: tgcrypto ---
+# Native C extension — 10x faster Telethon AES. Linux/macOS get prebuilt
+# wheels; Windows + Python 3.13 has no wheel and needs MSVC to compile.
+# Telethon transparently falls back to pyaes (already installed) when
+# tgcrypto is missing — slower per-message but fully functional.
+#
+# Install manually if you want it (and have a compiler / are on Linux):
+#   pip install tgcrypto
+#
+# The Docker image (Linux) installs it automatically — see Dockerfile.

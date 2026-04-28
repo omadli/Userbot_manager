@@ -1,0 +1,41 @@
+# Local development stack — SQLite, no Caddy, no SSL.
+#
+# Usage:
+#   docker compose -f docker-compose.dev.yml up
+#
+# Visit http://localhost:8000/  (no proxy, Django serves directly).
+# Code is bind-mounted, so saves are reflected immediately. Restart
+# the container to pick up settings changes.
+
+services:
+  web:
+    build: .
+    image: userbot-manager:latest
+    env_file: .env
+    environment:
+      # Force sqlite + DEBUG regardless of what .env says.
+      DB_ENGINE: sqlite
+      DEBUG: "True"
+      ALLOWED_HOSTS: "*"
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+      - dev_media:/app/media
+    command: ["web"]
+
+  worker:
+    image: userbot-manager:latest
+    env_file: .env
+    environment:
+      DB_ENGINE: sqlite
+      DEBUG: "True"
+    volumes:
+      - .:/app
+      - dev_media:/app/media
+    command: ["worker"]
+    depends_on:
+      - web
+
+volumes:
+  dev_media:

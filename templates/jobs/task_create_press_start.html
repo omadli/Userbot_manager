@@ -1,0 +1,120 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+        <a href="{% url 'accounts:dashboard' %}" class="text-muted text-decoration-none small">
+            <i class="bi bi-arrow-left me-1"></i>Akkauntlar
+        </a>
+        <h2 class="fw-bold mb-1 mt-1"><i class="bi bi-robot text-primary me-2"></i>Botga /start bosish</h2>
+        <p class="text-muted mb-0">Referral tizimlar uchun — har akkaunt botga kirib /start bosadi</p>
+    </div>
+</div>
+
+<form method="post" action="{% url 'jobs:task_create_press_start' %}" class="row g-3">
+    {% csrf_token %}
+    {% for aid in account_ids %}<input type="hidden" name="account_ids" value="{{ aid }}">{% endfor %}
+
+    <div class="col-lg-8">
+        <div class="card shadow-sm mb-3">
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold small text-uppercase text-muted">Bot username</label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-light border-0">@</span>
+                            <input type="text" name="bot_username" required placeholder="my_bot"
+                                   class="form-control bg-light border-0">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold small text-uppercase text-muted">Start param (referral)</label>
+                        <input type="text" name="start_param" placeholder="bo'sh qoldirilsa oddiy /start"
+                               class="form-control rounded-pill bg-light border-0">
+                        <small class="text-muted">Barcha akkauntlar uchun bir xil kod</small>
+                    </div>
+
+                    <div class="col-12">
+                        <label class="form-label fw-bold small text-uppercase text-muted">Per-akkaunt parametr (ixtiyoriy)</label>
+                        <textarea name="per_account_params" rows="4"
+                                  class="form-control font-monospace"
+                                  placeholder="ACCOUNT_ID=REFERRAL_CODE&#10;42=abc123&#10;43=xyz789"></textarea>
+                        <small class="text-muted">
+                            Har qatorga <code>&lt;account_id&gt;=&lt;param&gt;</code>. Agar akkaunt shu yerda bo'lsa — uning parametri yuqoridagi umumiydan ustun bo'ladi.
+                        </small>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small text-uppercase text-muted">Min pauza (s)</label>
+                        <input type="number" name="delay_min_sec" value="10" min="0" step="0.5" required
+                               class="form-control rounded-pill bg-light border-0">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small text-uppercase text-muted">Max pauza (s)</label>
+                        <input type="number" name="delay_max_sec" value="30" min="0" step="0.5" required
+                               class="form-control rounded-pill bg-light border-0">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small text-uppercase text-muted">Parallel</label>
+                        <input type="number" name="concurrency" value="5" min="1" max="50" required
+                               class="form-control rounded-pill bg-light border-0">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold small text-uppercase text-muted">Min akkaunt yoshi (daq)</label>
+                        <input type="number" name="min_account_age_minutes" value="30" min="0"
+                               class="form-control rounded-pill bg-light border-0">
+                    </div>
+                    <div class="col-md-6 d-flex align-items-end">
+                        <div class="w-100">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="skip_inactive" name="skip_inactive" checked>
+                                <label class="form-check-label" for="skip_inactive">Nofaol akkauntlar skip</label>
+                            </div>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="skip_spam" name="skip_spam" checked>
+                                <label class="form-check-label" for="skip_spam">Spam akkauntlar skip</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="alert alert-info border-0 shadow-sm rounded-4">
+            <strong><i class="bi bi-info-circle me-1"></i>Eslatma:</strong>
+            Referral deep-link formatida <code>https://t.me/botname?start=CODE</code> — bu yerda
+            <code>botname</code> "Bot username", <code>CODE</code> esa "Start param".
+            Bot /start ga javob bermasa ham, referral registratsiya hisoblanadi.
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card shadow-sm mb-3">
+            <div class="card-header bg-white border-bottom py-3">
+                <span class="fw-bold"><i class="bi bi-person-check me-2"></i>Akkauntlar</span>
+                <span class="badge bg-primary rounded-pill ms-2">{{ accounts|length }}</span>
+            </div>
+            <div class="card-body p-0" style="max-height: 400px; overflow-y: auto;">
+                <ul class="list-group list-group-flush">
+                    {% for a in accounts %}
+                    <li class="list-group-item d-flex justify-content-between">
+                        <div>
+                            <div class="fw-medium">{{ a.phone_number }}</div>
+                            <small class="text-muted">ID: {{ a.pk }}</small>
+                        </div>
+                        <div>
+                            {% if not a.is_active %}<span class="badge bg-danger bg-opacity-10 text-danger">Nofaol</span>{% endif %}
+                            {% if a.is_spam %}<span class="badge bg-warning bg-opacity-10 text-warning">Spam</span>{% endif %}
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+        {% include 'jobs/_schedule_block.html' %}
+
+        <button type="submit" class="btn btn-gradient rounded-pill w-100 py-3 fw-bold shadow">
+            <i class="bi bi-play-fill me-1"></i>Ishga tushirish
+        </button>
+    </div>
+</form>
+{% endblock %}

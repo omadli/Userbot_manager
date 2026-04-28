@@ -1,0 +1,174 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="fw-bold mb-1"><i class="bi bi-shield-lock-fill text-primary me-2"></i>Proxy'lar</h2>
+        <p class="text-muted mb-0">Akkauntlar Telegramga shu proxy'lar orqali ulanishi mumkin</p>
+    </div>
+    <button type="button" class="btn btn-gradient rounded-pill px-4 shadow-sm py-2"
+            data-bs-toggle="modal" data-bs-target="#newProxyModal">
+        <i class="bi bi-plus-lg me-1"></i> Yangi proxy
+    </button>
+</div>
+
+<div class="alert alert-info border-0 shadow-sm rounded-4 d-flex align-items-start gap-3 mb-4">
+    <i class="bi bi-info-circle-fill fs-4 text-info"></i>
+    <div>
+        <strong>Maslahat:</strong> 100+ akkaunt bitta IP'dan ishlatilsa Telegram anti-fraud tez ishga tushadi.
+        Har akkaunt uchun alohida (yoki 10-20 akkauntga bitta) proxy tavsiya etiladi.
+        SOCKS5 va MTProxy qo'llab-quvvatlanadi.
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body p-0">
+        {% if proxies %}
+        <table class="table table-hover mb-0 align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th class="ps-4">Nomi</th>
+                    <th>Turi</th>
+                    <th>Host:Port</th>
+                    <th>Akkauntlar</th>
+                    <th>Holat</th>
+                    <th>Oxirgi tekshiruv</th>
+                    <th class="text-end pe-4" style="width: 260px;">Amallar</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in proxies %}
+                <tr>
+                    <td class="ps-4">
+                        <a href="{% url 'accounts:proxy_detail' p.pk %}" class="fw-semibold text-dark text-decoration-none">{{ p.name }}</a>
+                    </td>
+                    <td>
+                        {% if p.proxy_type == 'socks5' %}
+                        <span class="badge bg-info bg-opacity-10 text-info border border-info rounded-pill px-2">SOCKS5</span>
+                        {% else %}
+                        <span class="badge bg-warning bg-opacity-10 text-warning border border-warning rounded-pill px-2">MTProxy</span>
+                        {% endif %}
+                    </td>
+                    <td class="font-monospace small">{{ p.host }}:{{ p.port }}</td>
+                    <td>
+                        <span class="badge bg-primary bg-opacity-10 text-primary rounded-pill">
+                            {{ p.account_count }} ta
+                        </span>
+                    </td>
+                    <td>
+                        {% if not p.is_active %}
+                            <span class="badge bg-secondary bg-opacity-10 text-secondary">O'chirilgan</span>
+                        {% elif p.last_check_ok is None %}
+                            <span class="badge bg-light text-muted border">Tekshirilmagan</span>
+                        {% elif p.last_check_ok %}
+                            <span class="badge bg-success bg-opacity-10 text-success border border-success">✓ Ishlayapti</span>
+                        {% else %}
+                            <span class="badge bg-danger bg-opacity-10 text-danger border border-danger" title="{{ p.last_check_error }}">✗ Xato</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-muted small">
+                        {% if p.last_checked_at %}{{ p.last_checked_at|date:"d.m H:i" }}{% else %}—{% endif %}
+                    </td>
+                    <td class="text-end pe-4">
+                        <form method="post" class="d-inline m-0">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="check">
+                            <input type="hidden" name="pk" value="{{ p.pk }}">
+                            <button class="btn btn-sm btn-outline-info rounded-pill px-3" title="Ulanishni tekshirish">
+                                <i class="bi bi-check-circle"></i> Tekshirish
+                            </button>
+                        </form>
+                        <a href="{% url 'accounts:proxy_detail' p.pk %}" class="btn btn-sm btn-primary rounded-pill px-3">
+                            <i class="bi bi-pencil-square"></i>
+                        </a>
+                        <form method="post" class="d-inline m-0" onsubmit="return confirm('{{ p.name }} proxy\'ni o\'chirasizmi?');">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="delete">
+                            <input type="hidden" name="pk" value="{{ p.pk }}">
+                            <button class="btn btn-sm btn-outline-danger rounded-pill px-2"><i class="bi bi-trash3"></i></button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="text-center py-5 text-muted">
+            <i class="bi bi-shield-lock fs-1 opacity-25 d-block mb-2"></i>
+            Hali proxy yo'q. "Yangi proxy" orqali qo'shing.
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- New proxy modal -->
+<div class="modal fade" id="newProxyModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="create">
+                <div class="modal-header bg-light">
+                    <h5 class="modal-title fw-bold"><i class="bi bi-plus-circle me-2 text-primary"></i>Yangi proxy</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-uppercase text-muted">Nomi</label>
+                        <input type="text" name="name" required class="form-control rounded-pill bg-light border-0"
+                               placeholder="Proxy 1 — Germany">
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold small text-uppercase text-muted">Turi</label>
+                            <select name="proxy_type" class="form-select rounded-pill bg-light border-0" id="ptype">
+                                <option value="socks5">SOCKS5</option>
+                                <option value="mtproto">MTProxy</option>
+                            </select>
+                        </div>
+                        <div class="col-md-5">
+                            <label class="form-label fw-bold small text-uppercase text-muted">Host</label>
+                            <input type="text" name="host" required class="form-control rounded-pill bg-light border-0"
+                                   placeholder="1.2.3.4 yoki proxy.domain">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold small text-uppercase text-muted">Port</label>
+                            <input type="number" name="port" required min="1" max="65535" class="form-control rounded-pill bg-light border-0">
+                        </div>
+                        <div class="col-md-6" data-socks>
+                            <label class="form-label fw-bold small text-uppercase text-muted">Username</label>
+                            <input type="text" name="username" class="form-control rounded-pill bg-light border-0">
+                        </div>
+                        <div class="col-md-6" data-socks>
+                            <label class="form-label fw-bold small text-uppercase text-muted">Parol</label>
+                            <input type="text" name="password" class="form-control rounded-pill bg-light border-0">
+                        </div>
+                        <div class="col-12" data-mtproto style="display: none;">
+                            <label class="form-label fw-bold small text-uppercase text-muted">Secret (hex)</label>
+                            <input type="text" name="secret" class="form-control rounded-pill bg-light border-0 font-monospace"
+                                   placeholder="ee00112233...">
+                        </div>
+                        <div class="col-12">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" name="is_active" id="pactive" checked>
+                                <label class="form-check-label" for="pactive">Aktiv</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light">
+                    <button type="button" class="btn btn-secondary rounded-pill px-4" data-bs-dismiss="modal">Bekor</button>
+                    <button type="submit" class="btn btn-gradient rounded-pill px-4 fw-bold">Qo'shish</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.getElementById('ptype').addEventListener('change', function() {
+        const isMT = this.value === 'mtproto';
+        document.querySelectorAll('[data-socks]').forEach(el => el.style.display = isMT ? 'none' : '');
+        document.querySelectorAll('[data-mtproto]').forEach(el => el.style.display = isMT ? '' : 'none');
+    });
+</script>
+{% endblock %}

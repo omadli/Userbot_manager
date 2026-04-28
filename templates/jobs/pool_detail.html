@@ -1,0 +1,272 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+        <a href="{% url 'jobs:pool_list' %}" class="text-muted text-decoration-none small">
+            <i class="bi bi-arrow-left me-1"></i>Pool'lar
+        </a>
+        <h2 class="fw-bold mb-0 mt-1">
+            <i class="bi bi-collection text-primary me-2"></i>{{ pool.name }}
+            <span class="badge bg-primary bg-opacity-10 text-primary ms-2 fs-6">{{ pool.get_category_display }}</span>
+        </h2>
+        {% if pool.description %}<p class="text-muted mb-0 mt-1">{{ pool.description }}</p>{% endif %}
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <button class="btn btn-outline-secondary rounded-pill px-3"
+                data-bs-toggle="modal" data-bs-target="#editPoolModal">
+            <i class="bi bi-pencil me-1"></i>Tahrirlash
+        </button>
+        <button class="btn btn-outline-primary rounded-pill px-3"
+                data-bs-toggle="modal" data-bs-target="#generateUzbekModal">
+            <i class="bi bi-stars me-1"></i>O'zbekcha generatsiya
+        </button>
+        <button class="btn btn-gradient rounded-pill px-3"
+                data-bs-toggle="modal" data-bs-target="#bulkAddModal">
+            <i class="bi bi-cloud-upload me-1"></i>Massa qo'shish
+        </button>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-8">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div class="d-flex align-items-center gap-3">
+                    <span class="fw-bold"><i class="bi bi-list-ul me-2"></i>Nomlar</span>
+                    <span class="badge bg-light text-dark border rounded-pill px-3">Jami: {{ total_names }}</span>
+                    {% if total_names > shown_limit %}
+                    <span class="badge bg-warning bg-opacity-25 text-warning border border-warning rounded-pill px-3">
+                        Ko'rsatilmoqda: birinchi {{ shown_limit }}
+                    </span>
+                    {% endif %}
+                </div>
+                <form method="get" class="d-flex gap-2">
+                    <input type="search" name="q" value="{{ search }}" placeholder="Qidirish..."
+                           class="form-control form-control-sm rounded-pill bg-light border-0" style="min-width: 200px;">
+                    <button class="btn btn-sm btn-primary rounded-pill px-3">
+                        <i class="bi bi-search"></i>
+                    </button>
+                </form>
+            </div>
+            <div class="card-body p-0">
+                {% if names %}
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="ps-4" style="width: 60px;">#</th>
+                            <th>Matn</th>
+                            <th style="width: 120px;">Ishlatilgan</th>
+                            <th class="text-end pe-4" style="width: 80px;">Amal</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for n in names %}
+                        <tr>
+                            <td class="ps-4 text-muted">{{ forloop.counter }}</td>
+                            <td class="fw-medium">{{ n.text }}</td>
+                            <td>
+                                {% if n.used_count %}
+                                <span class="badge bg-info bg-opacity-10 text-info border border-info rounded-pill px-2">
+                                    {{ n.used_count }}
+                                </span>
+                                {% else %}
+                                <span class="text-muted small">0</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end pe-4">
+                                <form method="post" class="m-0 d-inline">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="action" value="delete_name">
+                                    <input type="hidden" name="name_pk" value="{{ n.pk }}">
+                                    <button class="btn btn-sm btn-outline-danger rounded-pill px-2 py-0"
+                                            onclick="return confirm('O\'chirasizmi?');">
+                                        <i class="bi bi-x"></i>
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="text-center py-5 text-muted">
+                    <i class="bi bi-inbox fs-1 opacity-25 d-block mb-2"></i>
+                    {% if search %}Qidiruv bo'yicha nomlar topilmadi.{% else %}Pool bo'sh. "Massa qo'shish" orqali nomlarni kiriting.{% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <!-- Add one -->
+        <div class="card shadow-sm mb-3">
+            <div class="card-header bg-white border-bottom py-3">
+                <span class="fw-bold"><i class="bi bi-plus-lg me-2"></i>Bitta nom qo'shish</span>
+            </div>
+            <div class="card-body">
+                <form method="post" class="m-0 d-flex gap-2">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="add_one">
+                    <input type="text" name="text" placeholder="Nom matni..." maxlength="255" required
+                           class="form-control rounded-pill bg-light border-0">
+                    <button class="btn btn-primary rounded-pill px-3">
+                        <i class="bi bi-plus-lg"></i>
+                    </button>
+                </form>
+            </div>
+        </div>
+        <!-- Danger zone -->
+        <div class="card shadow-sm border-danger border-opacity-25">
+            <div class="card-header bg-white border-bottom py-3">
+                <span class="fw-bold text-danger"><i class="bi bi-exclamation-triangle me-2"></i>Xavfli amallar</span>
+            </div>
+            <div class="card-body">
+                <form method="post" class="m-0"
+                      onsubmit="return confirm('Barcha {{ total_names }} ta nomni o\'chirasizmi? Bu amalni qaytarib bo\'lmaydi.');">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="clear_all">
+                    <button class="btn btn-outline-danger rounded-pill w-100" {% if not total_names %}disabled{% endif %}>
+                        <i class="bi bi-trash3 me-1"></i>Hammasini o'chirish
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Bulk add modal -->
+<div class="modal fade" id="bulkAddModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content border-0 shadow">
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="bulk_add">
+                <div class="modal-header bg-light border-bottom">
+                    <h5 class="modal-title fw-bold"><i class="bi bi-cloud-upload me-2 text-primary"></i>Massa nom qo'shish</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <p class="text-muted small mb-2">Har qatorga bitta nom yozing. Takroriy nomlar chetlab o'tiladi.</p>
+                    <textarea name="bulk_names" rows="14" class="form-control font-monospace"
+                              placeholder="Kripto signallar&#10;Crypto signals&#10;BTC/ETH chat&#10;..." required></textarea>
+                </div>
+                <div class="modal-footer bg-light border-top">
+                    <button type="button" class="btn btn-secondary rounded-pill px-4" data-bs-dismiss="modal">Bekor</button>
+                    <button type="submit" class="btn btn-gradient rounded-pill px-4 fw-bold">Qo'shish</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Generate Uzbek names modal -->
+<div class="modal fade" id="generateUzbekModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="generate_uzbek">
+                <div class="modal-header bg-light border-bottom">
+                    <h5 class="modal-title fw-bold">
+                        <i class="bi bi-stars me-2 text-primary"></i>O'zbekcha so'zlardan generatsiya
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <p class="text-muted small mb-3">
+                        <code>omadli/uzbek-wordlist</code> dan random so'zlar olib pool'ga qo'shadi.
+                        Birinchi safar wordlist'ni internetdan yuklaydi (~300 KB).
+                    </p>
+                    <div class="row g-3">
+                        <div class="col-6">
+                            <label class="form-label fw-bold small text-uppercase text-muted">Soni</label>
+                            <input type="number" name="count" value="100" min="1" max="5000" required
+                                   class="form-control rounded-pill bg-light border-0">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label fw-bold small text-uppercase text-muted">Har nomda so'z</label>
+                            <select name="words_per_name" class="form-select rounded-pill bg-light border-0">
+                                <option value="1">1 ta</option>
+                                <option value="2" selected>2 ta</option>
+                                <option value="3">3 ta</option>
+                                <option value="4">4 ta</option>
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label fw-bold small text-uppercase text-muted">Yozuv</label>
+                            <select name="script" class="form-select rounded-pill bg-light border-0">
+                                <option value="latin" selected>Lotin</option>
+                                <option value="cyrillic">Kirill</option>
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label fw-bold small text-uppercase text-muted">Registr</label>
+                            <select name="case" class="form-select rounded-pill bg-light border-0">
+                                <option value="title" selected>Bosh Harf</option>
+                                <option value="lower">kichik</option>
+                                <option value="upper">KATTA</option>
+                                <option value="none">o'zgarishsiz</option>
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-bold small text-uppercase text-muted">Ajratuvchi</label>
+                            <select name="separator" class="form-select rounded-pill bg-light border-0">
+                                <option value="space" selected>Bo'sh joy ("So'z So'z")</option>
+                                <option value="dash">Tire ("So'z-So'z")</option>
+                                <option value="underscore">Pastki chiziq ("So'z_So'z")</option>
+                                <option value="none">Yopishgan ("So'zSo'z")</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light border-top">
+                    <button type="button" class="btn btn-secondary rounded-pill px-4" data-bs-dismiss="modal">Bekor</button>
+                    <button type="submit" class="btn btn-primary rounded-pill px-4 fw-bold">
+                        <i class="bi bi-stars me-1"></i>Generatsiya
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit pool modal -->
+<div class="modal fade" id="editPoolModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="edit_pool">
+                <div class="modal-header bg-light border-bottom">
+                    <h5 class="modal-title fw-bold"><i class="bi bi-pencil me-2 text-warning"></i>Pool sozlamalari</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-uppercase text-muted">Nomi</label>
+                        <input type="text" name="name" value="{{ pool.name }}" required
+                               class="form-control rounded-pill bg-light border-0">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-uppercase text-muted">Kategoriya</label>
+                        <select name="category" class="form-select rounded-pill bg-light border-0">
+                            <option value="any" {% if pool.category == 'any' %}selected{% endif %}>Har qanday</option>
+                            <option value="group" {% if pool.category == 'group' %}selected{% endif %}>Guruh</option>
+                            <option value="channel" {% if pool.category == 'channel' %}selected{% endif %}>Kanal</option>
+                        </select>
+                    </div>
+                    <div class="mb-0">
+                        <label class="form-label fw-bold small text-uppercase text-muted">Izoh</label>
+                        <textarea name="description" rows="3" class="form-control bg-light border-0" style="border-radius: 12px;">{{ pool.description }}</textarea>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light border-top">
+                    <button type="button" class="btn btn-secondary rounded-pill px-4" data-bs-dismiss="modal">Bekor</button>
+                    <button type="submit" class="btn btn-warning rounded-pill px-4 fw-bold text-dark">Saqlash</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

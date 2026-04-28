@@ -1,0 +1,70 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="row justify-content-center py-5">
+    <div class="col-md-7 col-lg-6">
+        <div class="text-center mb-4">
+            <div class="d-inline-flex align-items-center justify-content-center bg-primary text-white rounded-circle shadow mb-3" style="width: 70px; height: 70px;">
+                <i class="bi bi-telegram fs-1"></i>
+            </div>
+            <h3 class="fw-bold text-dark">Telegramga ulanish</h3>
+            <p class="text-muted">Telefon raqamingizni kiritib tasdiqlash kodini oling.</p>
+        </div>
+
+        <div class="card p-4 shadow-sm border-0">
+            <form method="post">
+                {% csrf_token %}
+
+                <!-- Phone number -->
+                <div class="mb-4 text-start">
+                    <label class="form-label fw-bold text-muted small text-uppercase" style="letter-spacing: 0.5px;">Telefon raqam</label>
+                    <input type="text" name="phone_number" class="form-control form-control-lg fw-medium bg-light border-0"
+                           placeholder="+998..." required autocomplete="off" autofocus>
+                </div>
+
+                <!-- Device setting -->
+                <div class="mb-4 text-start">
+                    <label class="form-label fw-bold text-muted small text-uppercase" style="letter-spacing: 0.5px;">
+                        <i class="bi bi-phone me-1"></i>Qurilma (Device)
+                    </label>
+                    <select name="device_setting_id" class="form-select form-select-lg bg-light border-0">
+                        <option value="">— Global sozlama (default) —</option>
+                        {% for ds in device_settings %}
+                        <option value="{{ ds.pk }}">{{ ds.name }} &nbsp;·&nbsp; {{ ds.system_version }} &nbsp;·&nbsp; v{{ ds.app_version }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-text text-muted">Telegram shubhalanmasligi uchun qurilmani tanlang.</div>
+                </div>
+
+                <!-- Optional API credentials -->
+                <details class="mb-4">
+                    <summary class="fw-semibold text-muted small text-uppercase mb-3" style="cursor:pointer; letter-spacing: 0.5px;">
+                        <i class="bi bi-key me-1"></i>Maxsus API kalitlar (ixtiyoriy)
+                    </summary>
+                    <div class="ps-2 pt-2">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold text-muted small text-uppercase" style="letter-spacing: 0.5px;">API ID</label>
+                            <input type="number" name="api_id" class="form-control bg-light border-0"
+                                   placeholder="12345678">
+                        </div>
+                        <div class="mb-1">
+                            <label class="form-label fw-bold text-muted small text-uppercase" style="letter-spacing: 0.5px;">API Hash</label>
+                            <input type="text" name="api_hash" class="form-control bg-light border-0 font-monospace"
+                                   placeholder="a1b2c3d4e5f6...">
+                        </div>
+                        <div class="form-text text-muted">
+                            Bo'sh qoldirilsa global <code>settings.py</code> dagi kalitlar ishlatiladi.<br>
+                            Yangi kalitlar: <a href="https://my.telegram.org" target="_blank">my.telegram.org</a>
+                        </div>
+                    </div>
+                </details>
+
+                <button type="submit" class="btn btn-gradient w-100 py-2 fs-5 rounded-pill mb-3 shadow">
+                    <i class="bi bi-send-fill me-2"></i> Kodni yuborish
+                </button>
+                <a href="{% url 'accounts:dashboard' %}" class="btn btn-light w-100 fw-medium border rounded-pill py-2 text-center d-block text-dark text-decoration-none">Bekor qilish</a>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

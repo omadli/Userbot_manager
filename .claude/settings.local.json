@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(venv/Scripts/python.exe manage.py check)",
+      "Bash(venv/Scripts/python.exe manage.py makemigrations jobs)",
+      "Bash(venv/Scripts/python.exe manage.py migrate)",
+      "Bash(venv/Scripts/python.exe manage.py check --deploy)",
+      "Bash(venv/Scripts/python.exe -c ' *)",
+      "Bash(venv/Scripts/python.exe manage.py help run_worker)",
+      "Bash(venv/Scripts/python.exe manage.py makemigrations accounts)",
+      "Bash(venv/Scripts/pip.exe install *)",
+      "Bash(venv/Scripts/python.exe manage.py migrate accounts)",
+      "Bash(venv/Scripts/python.exe manage.py encrypt_existing --dry-run)",
+      "Bash(venv/Scripts/python.exe manage.py encrypt_existing)",
+      "Bash(grep -v \"^$\")",
+      "Bash(venv/Scripts/python.exe manage.py makemigrations)",
+      "Bash(venv/Scripts/python.exe -c \"from croniter import croniter; print\\(croniter.__module__\\); c=croniter\\('*/5 * * * *', __import__\\('datetime'\\).datetime.now\\(\\)\\); print\\(c.get_next\\(\\)\\)\")",
+      "Bash(venv/Scripts/python.exe -m pip install --quiet whitenoise)",
+      "Bash(venv/Scripts/python.exe manage.py collectstatic --noinput --dry-run)",
+      "Bash(gh api *)",
+      "WebFetch(domain:api.github.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(python -m py_compile jobs/wordlist.py jobs/views.py jobs/runners.py jobs/models.py)",
+      "Bash(python -m py_compile config/settings.py config/urls.py accounts/views.py jobs/management/commands/backup_to_telegram.py)",
+      "Bash(bash -n entrypoint.sh)",
+      "Bash(venv/Scripts/python.exe -m pip install django-ratelimit==4.1.0)",
+      "Bash(venv/Scripts/python.exe manage.py runserver 8765 --noreload)",
+      "Bash(curl -s -w \"\\\\nHTTP_STATUS:%{http_code}\\\\n\" http://localhost:8765/healthz)",
+      "Bash(pkill -f \"runserver 8765\")",
+      "Bash(taskkill //F //IM python.exe //FI \"WINDOWTITLE eq runserver*\")",
+      "Bash(curl -s http://localhost:8765/healthz)",
+      "Bash(powershell -Command 'Get-Process python -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like '\\\\''*runserver*'\\\\'' -or $_.CommandLine -like '\\\\''*8765*'\\\\'' } | Stop-Process -Force; Get-Process python -ErrorAction SilentlyContinue | Select-Object Id, StartTime | Format-Table')",
+      "Bash(powershell -Command \"Stop-Process -Id 21884,30328 -Force -ErrorAction SilentlyContinue\")",
+      "Bash(curl -s --max-time 2 http://localhost:8765/healthz)",
+      "Bash(venv/Scripts/python.exe manage.py help backup_to_telegram)",
+      "Bash(docker compose *)",
+      "Bash(POSTGRES_PASSWORD=dummy docker compose config)"
+    ]
+  }
+}

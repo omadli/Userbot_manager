@@ -1,0 +1,129 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+        <a href="{% url 'accounts:dashboard' %}" class="text-muted text-decoration-none small">
+            <i class="bi bi-arrow-left me-1"></i>Akkauntlar
+        </a>
+        <h2 class="fw-bold mb-1 mt-1"><i class="bi bi-heart-fill text-danger me-2"></i>Reaksiya qo'yish vazifasi</h2>
+        <p class="text-muted mb-0">Tanlangan akkauntlar ko'rsatilgan xabarlarga random emoji reaksiya qo'yishadi</p>
+    </div>
+</div>
+
+<form method="post" action="{% url 'jobs:task_create_react_to_post' %}" class="row g-3">
+    {% csrf_token %}
+    {% for aid in account_ids %}<input type="hidden" name="account_ids" value="{{ aid }}">{% endfor %}
+
+    <div class="col-lg-8">
+        <div class="card shadow-sm mb-3">
+            <div class="card-header bg-white border-bottom py-3">
+                <span class="fw-bold"><i class="bi bi-link-45deg me-2"></i>Xabar URL'lari</span>
+            </div>
+            <div class="card-body">
+                <textarea name="message_urls" rows="8" required
+                          class="form-control font-monospace"
+                          placeholder="https://t.me/channelname/1234&#10;https://t.me/c/1234567890/42"></textarea>
+            </div>
+        </div>
+
+        <div class="card shadow-sm mb-3">
+            <div class="card-header bg-white border-bottom py-3">
+                <span class="fw-bold"><i class="bi bi-emoji-smile me-2"></i>Reaksiya va parametrlar</span>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold small text-uppercase text-muted">Emojilar (vergul yoki bo'sh joy)</label>
+                        <input type="text" name="emojis" value="👍 ❤ 🔥 👏"
+                               class="form-control rounded-pill bg-light border-0">
+                        <small class="text-muted">Har akkaunt random tanlaydi</small>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold small text-uppercase text-muted">Ehtimollik (0-1)</label>
+                        <input type="number" name="probability" value="0.85" min="0.01" max="1" step="0.05"
+                               class="form-control rounded-pill bg-light border-0">
+                        <small class="text-muted">Har akkaunt har xabarni shu ehtimollik bilan reaksiyalaydi</small>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small text-uppercase text-muted">Min pauza (s)</label>
+                        <input type="number" name="delay_min_sec" value="10" min="0" step="0.5" required
+                               class="form-control rounded-pill bg-light border-0">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small text-uppercase text-muted">Max pauza (s)</label>
+                        <input type="number" name="delay_max_sec" value="30" min="0" step="0.5" required
+                               class="form-control rounded-pill bg-light border-0">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small text-uppercase text-muted">Parallel</label>
+                        <input type="number" name="concurrency" value="5" min="1" max="50" required
+                               class="form-control rounded-pill bg-light border-0">
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold small text-uppercase text-muted">Min akkaunt yoshi (daq)</label>
+                        <input type="number" name="min_account_age_minutes" value="30" min="0"
+                               class="form-control rounded-pill bg-light border-0">
+                    </div>
+                    <div class="col-md-6 d-flex align-items-end">
+                        <div class="w-100">
+                            <div class="form-check form-switch mb-2">
+                                <input class="form-check-input" type="checkbox" id="skip_inactive" name="skip_inactive" checked>
+                                <label class="form-check-label fw-medium" for="skip_inactive">Nofaol akkauntlar skip</label>
+                            </div>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="skip_spam" name="skip_spam" checked>
+                                <label class="form-check-label fw-medium" for="skip_spam">Spam akkauntlar skip</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="alert alert-info border-0 shadow-sm rounded-4 d-flex align-items-start gap-3">
+            <i class="bi bi-info-circle-fill fs-4 text-info"></i>
+            <div>
+                <strong>Eslatma:</strong>
+                <ul class="mb-0 mt-2 ps-3">
+                    <li>Kanal reaksiyalar o'chirilgan bo'lsa <code>ReactionInvalid</code> ushlanadi</li>
+                    <li>Ehtimollik 0.85 = 85% akkauntlar reaksiya qo'yadi, 15% chetlab o'tadi — tabiiyroq ko'rinadi</li>
+                    <li>Maxfiy kanalda (<code>t.me/c/...</code>) akkaunt a'zo bo'lishi kerak</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card shadow-sm mb-3">
+            <div class="card-header bg-white border-bottom py-3">
+                <span class="fw-bold"><i class="bi bi-person-check me-2"></i>Tanlangan akkauntlar</span>
+                <span class="badge bg-primary rounded-pill ms-2">{{ accounts|length }}</span>
+            </div>
+            <div class="card-body p-0" style="max-height: 400px; overflow-y: auto;">
+                <ul class="list-group list-group-flush">
+                    {% for a in accounts %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="fw-medium">{{ a.phone_number }}</div>
+                            <small class="text-muted">{{ a.first_name|default:"Nomsiz" }}</small>
+                        </div>
+                        <div class="d-flex gap-1">
+                            {% if not a.is_active %}<span class="badge bg-danger bg-opacity-10 text-danger">Nofaol</span>{% endif %}
+                            {% if a.is_spam %}<span class="badge bg-warning bg-opacity-10 text-warning">Spam</span>{% endif %}
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+
+        {% include 'jobs/_schedule_block.html' %}
+
+        <button type="submit" class="btn btn-gradient rounded-pill w-100 py-3 fw-bold shadow">
+            <i class="bi bi-play-fill me-1"></i>Vazifani ishga tushirish
+        </button>
+    </div>
+</form>
+{% endblock %}

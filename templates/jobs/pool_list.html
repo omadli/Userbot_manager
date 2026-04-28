@@ -1,0 +1,99 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="fw-bold mb-1"><i class="bi bi-collection text-primary me-2"></i>Nom pool'lar</h2>
+        <p class="text-muted mb-0">Guruh/kanal yaratishda ishlatiladigan random nomlar to'plami</p>
+    </div>
+    <button type="button" class="btn btn-gradient rounded-pill px-4 shadow-sm py-2"
+            data-bs-toggle="modal" data-bs-target="#newPoolModal">
+        <i class="bi bi-plus-lg me-1"></i> Yangi pool
+    </button>
+</div>
+
+<div class="row g-3">
+    {% for p in pools %}
+    <div class="col-md-6 col-lg-4">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <h5 class="card-title fw-bold mb-0">
+                        <a href="{% url 'jobs:pool_detail' p.pk %}" class="text-decoration-none text-dark">{{ p.name }}</a>
+                    </h5>
+                    <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 rounded-pill">
+                        {% if p.category == 'group' %}<i class="bi bi-people-fill"></i> Guruh
+                        {% elif p.category == 'channel' %}<i class="bi bi-megaphone-fill"></i> Kanal
+                        {% else %}<i class="bi bi-shuffle"></i> Har qanday{% endif %}
+                    </span>
+                </div>
+                {% if p.description %}<p class="text-muted small mb-3">{{ p.description }}</p>{% endif %}
+                <div class="d-flex align-items-center justify-content-between mt-3">
+                    <span class="text-muted small">
+                        <i class="bi bi-list-ul me-1"></i>{{ p.count }} ta nom
+                    </span>
+                    <span class="text-muted small">{{ p.created_at|date:"d.m.Y" }}</span>
+                </div>
+            </div>
+            <div class="card-footer bg-white border-top-0 pt-0 d-flex gap-2">
+                <a href="{% url 'jobs:pool_detail' p.pk %}" class="btn btn-sm btn-primary rounded-pill px-3 flex-grow-1">
+                    <i class="bi bi-pencil-square me-1"></i>Boshqarish
+                </a>
+                <form method="post" action="{% url 'jobs:pool_list' %}" class="m-0"
+                      onsubmit="return confirm('{{ p.name }} pool\'ini o\'chirishni tasdiqlaysizmi?');">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="delete">
+                    <input type="hidden" name="pk" value="{{ p.pk }}">
+                    <button class="btn btn-sm btn-outline-danger rounded-pill px-3">
+                        <i class="bi bi-trash3"></i>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% empty %}
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body text-center py-5 text-muted">
+                <i class="bi bi-collection fs-1 opacity-25 d-block mb-3"></i>
+                Hali pool mavjud emas. "Yangi pool" tugmasi orqali yarating.
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Create pool modal -->
+<div class="modal fade" id="newPoolModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <form method="post" action="{% url 'jobs:pool_list' %}">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="create">
+                <div class="modal-header bg-light border-bottom">
+                    <h5 class="modal-title fw-bold"><i class="bi bi-plus-circle me-2 text-primary"></i>Yangi nom pool</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold text-uppercase small text-muted">Nomi</label>
+                        <input type="text" name="name" class="form-control form-control-lg rounded-pill bg-light border-0"
+                               placeholder="Masalan: Kripto guruhlari" required>
+                    </div>
+                    <div class="mb-0">
+                        <label class="form-label fw-bold text-uppercase small text-muted">Kategoriya</label>
+                        <select name="category" class="form-select form-select-lg rounded-pill bg-light border-0">
+                            <option value="any">Har qanday (guruh + kanal)</option>
+                            <option value="group" selected>Guruh</option>
+                            <option value="channel">Kanal</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light border-top">
+                    <button type="button" class="btn btn-secondary rounded-pill px-4" data-bs-dismiss="modal">Bekor</button>
+                    <button type="submit" class="btn btn-gradient rounded-pill px-4 fw-bold">Yaratish</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

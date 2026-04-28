@@ -1,0 +1,61 @@
+# Local virtualenv — image builds its own.
+venv/
+.venv/
+env/
+
+# Python bytecode and caches.
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local DB and Telethon sessions — never ship these in the image.
+db.sqlite3
+db.sqlite3-journal
+*.session
+*.session-journal
+
+# Local media (avatars get downloaded inside the container at runtime).
+media/
+
+# Static collection (regenerated on container start).
+staticfiles/
+
+# Runtime logs — mounted from host as a volume, never baked into the image.
+logs/
+
+# Local backups never belong in the image.
+backups/
+
+# Secrets — must come from the host's .env, not baked in.
+.env
+.env.local
+.env.production
+.env.docker
+
+# Editor / OS junk.
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Git & docs that aren't needed at runtime.
+.git/
+.gitignore
+.gitattributes
+.github/
+
+# Docker artifacts.
+docker-compose*.yml
+Dockerfile
+.dockerignore
+Caddyfile
+
+# Tests / docs / planning files.
+**/tests.py
+docs/
+README.md
+*.md
