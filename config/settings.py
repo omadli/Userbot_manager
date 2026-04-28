@@ -332,6 +332,11 @@ if not DEBUG:
     if _env_bool('SECURE_BEHIND_PROXY', default=False):
         SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
         SECURE_SSL_REDIRECT = True
+        # /healthz is hit over plain HTTP from inside the docker network
+        # (Caddy active probe + Docker healthcheck). Without this exemption
+        # Django would 301 it to HTTPS, Caddy would mark the probe as
+        # "out of tolerances" and serve 503 to real users.
+        SECURE_REDIRECT_EXEMPT = [r'^healthz$']
 
 
 # ---------------------------------------------------------------------------
