@@ -33,7 +33,12 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           envs: SECRET_KEY,DB_ENCRYPTION_KEY,API_ID,API_HASH,GIT_REPO
           command_timeout: 12m
-          script_stop: true
+          # `script_stop` injects a `if [ $? -ne 0 ]; exit; fi` between every
+          # line of the script — that breaks Python heredocs because the bash
+          # check ends up *inside* the heredoc and Python parses it. The
+          # `set -euo pipefail` at the top of the script gives equivalent
+          # fail-fast behavior without the injection.
+          script_stop: false
           script: |
             set -euo pipefail
 
