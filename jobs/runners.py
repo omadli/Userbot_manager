@@ -607,6 +607,161 @@ class JoinChannelRunner(TaskRunner):
             return
 
 
+class LeaveChatsRunner(TaskRunner):
+    """Leave every group/channel where the account is not creator/admin.
+
+    Params:
+      account_ids (list[int])
+      kind        ('group' | 'channel')   defaults to 'group'
+      delay_min_sec, delay_max_sec        per-leave pause
+      concurrency                          parallel accounts
+      skip_inactive, skip_spam, min_account_age_minutes
+      max_chats   (int | None)             cap chats per account (default unlimited)
+
+    Progress total is the number of accounts (not chats — chat count is
+    only known after enumerating). Each account contributes 1 to `done`
+    when its enumeration+leave loop finishes.
+    """
+
+    async def run(self):
+        from .services import leave_non_admin_chats_for_account
+
+        p = self.params
+        account_ids = list(p.get('account_ids') or [])
+        kind = p.get('kind', 'group')
+        if kind not in ('group', 'channel'):
+            kind = 'group'
+        delay_min = float(p.get('delay_min_sec', 2))
+        delay_max = float(p.get('delay_max_sec', 6))
+        concurrency = max(1, int(p.get('concurrency', 3)))
+        min_age_minutes = int(p.get('min_account_age_minutes', 0))
+        skip_inactive = bool(p.get('skip_inactive', True))
+        skip_spam = bool(p.get('skip_spam', True))
+        max_chats = p.get('max_chats')
+        if max_chats is not None:
+            try:
+                max_chats = int(max_chats)
+                if max_chats <= 0:
+                    max_chats = None
+            except (TypeError, ValueError):
+                max_chats = None
+
+        if delay_max < delay_min:
+            delay_max = delay_min
+
+        accounts_qs = Account.objects.filter(
+            id__in=account_ids, owner=self.task.owner,
+        ).select_related('device_setting')
+        if skip_inactive:
+            accounts_qs = accounts_qs.filter(is_active=True)
+        if skip_spam:
+            accounts_qs = accounts_qs.filter(is_spam=False)
+
+        accounts = await sync_to_async(list)(accounts_qs)
+        if not accounts:
+            await self.log('error', "Filtrga mos akkaunt topilmadi")
+            await self.update_progress(
+                status='failed', error="No eligible accounts",
+                finished_at=timezone.now(),
+            )
+            return
+
+        await self.update_progress(total=len(accounts))
+        kind_label = 'guruh' if kind == 'group' else 'kanal'
+        await self.log(
+            'info',
+            f"{len(accounts)} ta akkaunt × admin emas {kind_label}lardan chiqish. "
+            f"Pause: {delay_min}-{delay_max}s, parallel: {concurrency}",
+        )
+
+        sem = asyncio.Semaphore(concurrency)
+
+        async def process_account(account):
+            async with sem:
+                if await self.is_cancelled():
+                    return
+
+                await self.log('info', "Boshlandi", account=account, step='start')
+
+                if min_age_minutes > 0:
+                    age_min = (timezone.now() - account.created_at).total_seconds() / 60
+                    if age_min < min_age_minutes:
+                        await self.log(
+                            'warning',
+                            f"Akkaunt yangi ({int(age_min)} daq) — chetlab o'tildi",
+                            account=account, step='warmup_skip',
+                        )
+                        await self.incr_done(success=False)
+                        return
+
+                if not account.session_string:
+                    await self.log('error', "Sessiya string yo'q",
+                                   account=account, step='no_session')
+                    await self.incr_done(success=False)
+                    return
+
+                if not await self.quota_ok(account):
+                    await self.incr_done(success=False)
+                    return
+
+                try:
+                    results = await leave_non_admin_chats_for_account(
+                        account, kind=kind,
+                        delay_min=delay_min, delay_max=delay_max,
+                        max_chats=max_chats,
+                    )
+                except Exception as e:
+                    await self.log(
+                        'error', f"Kutilmagan xato: {e}",
+                        account=account, step='unexpected_error',
+                        telegram_error=type(e).__name__,
+                    )
+                    await self.incr_done(success=False)
+                    return
+
+                # Tally + log per-chat events
+                left = kept = errors = 0
+                for r in results:
+                    if r['action'] == 'left':
+                        left += 1
+                        await self.log(
+                            'success',
+                            f"✓ chiqildi: {r['title']}",
+                            account=account, step='left',
+                        )
+                    elif r['action'] == 'kept_admin':
+                        kept += 1
+                        # Don't spam the log with every admin chat — counter only
+                    elif r['action'] == 'error':
+                        errors += 1
+                        await self.log(
+                            'warning',
+                            f"{r['title']}: {r['reason']}",
+                            account=account, step='leave_failed',
+                            telegram_error=r.get('error_type', ''),
+                        )
+
+                await self.log(
+                    'info' if errors == 0 else 'warning',
+                    f"Yakunlandi — {left} ta chiqildi, {kept} ta admin (saqlandi), "
+                    f"{errors} ta xato",
+                    account=account, step='finished',
+                )
+                await self.incr_done(success=(errors == 0))
+
+        await asyncio.gather(
+            *[process_account(acc) for acc in accounts],
+            return_exceptions=True,
+        )
+
+        if await self.is_cancelled():
+            await self.update_progress(status='cancelled', finished_at=timezone.now())
+            await self.log('warning', "Vazifa bekor qilindi")
+        else:
+            await self.update_progress(status='completed', finished_at=timezone.now())
+            await self.log('success', "Vazifa yakunlandi")
+
+
 class BoostViewsRunner(TaskRunner):
     """Increment view counts on messages from each selected account.
 
@@ -1486,6 +1641,8 @@ RUNNERS = {
     'create_groups': CreateGroupsRunner,
     'create_channels': CreateChannelsRunner,
     'join_channel': JoinChannelRunner,
+    'leave_groups': LeaveChatsRunner,
+    'leave_channels': LeaveChatsRunner,
     'boost_views': BoostViewsRunner,
     'react_to_post': ReactToPostRunner,
     'vote_poll': VotePollRunner,

@@ -14,7 +14,10 @@ from asgiref.sync import sync_to_async
 from telethon.tl.functions.channels import (
     CreateChannelRequest,
     JoinChannelRequest,
+    GetParticipantRequest,
+    LeaveChannelRequest,
 )
+from telethon.tl.functions.messages import DeleteChatUserRequest
 from telethon.tl.functions.messages import (
     ExportChatInviteRequest,
     ImportChatInviteRequest,
@@ -23,7 +26,10 @@ from telethon.tl.functions.messages import (
     SendVoteRequest,
     StartBotRequest,
 )
-from telethon.tl.types import PeerChannel, ReactionEmoji
+from telethon.tl.types import (
+    PeerChannel, ReactionEmoji, Channel, Chat,
+    ChannelParticipantCreator, ChannelParticipantAdmin,
+)
 from telethon.errors import (
     FloodWaitError,
     AuthKeyUnregisteredError,
@@ -833,6 +839,188 @@ async def boost_views_for_account(account, message_urls):
             'success': False, 'error': str(e),
             'error_type': type(e).__name__, 'stop_account': False,
         }
+    finally:
+        try:
+            await client.disconnect()
+        except Exception:
+            pass
+
+
+# ---------------------------------------------------------------------------
+# Leave non-admin chats — bulk cleanup of groups/channels where the user
+# is neither the creator nor an admin.
+# ---------------------------------------------------------------------------
+
+import asyncio
+import random
+
+
+async def leave_non_admin_chats_for_account(
+    account, *,
+    kind='group',
+    delay_min=2.0,
+    delay_max=6.0,
+    max_chats=None,
+):
+    """
+    Iterate this account's dialogs and leave every chat of `kind` where
+    the user is neither creator nor admin.
+
+    `kind`:
+      - 'group'    → megagroups (modern groups) + legacy basic Chats
+      - 'channel'  → broadcast channels only
+
+    Returns a list of dicts:
+        [{'chat_id': int, 'title': str,
+          'action': 'left' | 'kept_admin' | 'error',
+          'reason': str, 'error_type': str (only when action='error')}]
+
+    Detection of admin status uses the entity's own `creator` /
+    `admin_rights` attributes that come back with iter_dialogs() — no
+    extra GetParticipant call per chat, which would multiply API load
+    by N and trigger FloodWait on busy accounts.
+    """
+    try:
+        client = await get_client_for_account(account)
+    except Exception as e:
+        return [{
+            'chat_id': 0, 'title': '',
+            'action': 'error',
+            'reason': f"Ulanib bo'lmadi: {e}",
+            'error_type': type(e).__name__,
+        }]
+
+    results = []
+    try:
+        me = await client.get_me()
+        if not me:
+            await _mark_session_dead(account.pk)
+            return [{
+                'chat_id': 0, 'title': '',
+                'action': 'error',
+                'reason': "Sessiya yaroqsiz",
+                'error_type': 'NoMe',
+            }]
+        my_id = me.id
+
+        count = 0
+        async for dialog in client.iter_dialogs():
+            entity = dialog.entity
+
+            # Filter by kind
+            if isinstance(entity, Channel):
+                is_megagroup = bool(getattr(entity, 'megagroup', False))
+                if kind == 'group' and not is_megagroup:
+                    continue
+                if kind == 'channel' and is_megagroup:
+                    continue
+            elif isinstance(entity, Chat):
+                # Legacy basic group — only relevant for kind='group'
+                if kind != 'group':
+                    continue
+            else:
+                # User / SecretChat / etc. — skip
+                continue
+
+            count += 1
+            if max_chats and count > max_chats:
+                break
+
+            title = getattr(entity, 'title', '') or '<noname>'
+
+            # Determine admin status without extra API calls
+            is_creator = bool(getattr(entity, 'creator', False))
+            has_admin_rights = bool(getattr(entity, 'admin_rights', None))
+
+            if is_creator:
+                results.append({
+                    'chat_id': entity.id, 'title': title,
+                    'action': 'kept_admin', 'reason': 'creator',
+                })
+                continue
+            if has_admin_rights:
+                results.append({
+                    'chat_id': entity.id, 'title': title,
+                    'action': 'kept_admin', 'reason': 'admin',
+                })
+                continue
+
+            # Basic Chat doesn't expose `creator` reliably — fall back to
+            # checking participants. This is rare; cost is bounded by the
+            # number of basic groups, which is usually tiny.
+            if isinstance(entity, Chat):
+                try:
+                    full = await client.get_permissions(entity, my_id)
+                    if full.is_creator:
+                        results.append({
+                            'chat_id': entity.id, 'title': title,
+                            'action': 'kept_admin', 'reason': 'creator (basic)',
+                        })
+                        continue
+                    if full.is_admin:
+                        results.append({
+                            'chat_id': entity.id, 'title': title,
+                            'action': 'kept_admin', 'reason': 'admin (basic)',
+                        })
+                        continue
+                except Exception:
+                    pass  # fall through to leave
+
+            # Not admin — leave
+            try:
+                await client.delete_dialog(entity)
+                results.append({
+                    'chat_id': entity.id, 'title': title,
+                    'action': 'left', 'reason': '',
+                })
+            except FloodWaitError as e:
+                wait = int(getattr(e, 'seconds', 0) or 0)
+                # Sleep + one retry; if it floods again, mark error and move on
+                await asyncio.sleep(min(wait + 1, 60))
+                try:
+                    await client.delete_dialog(entity)
+                    results.append({
+                        'chat_id': entity.id, 'title': title,
+                        'action': 'left', 'reason': f'after FloodWait {wait}s',
+                    })
+                except Exception as e2:
+                    results.append({
+                        'chat_id': entity.id, 'title': title,
+                        'action': 'error',
+                        'reason': str(e2)[:200],
+                        'error_type': type(e2).__name__,
+                    })
+            except SESSION_DEAD_EXCEPTIONS as e:
+                await _mark_session_dead(account.pk)
+                results.append({
+                    'chat_id': entity.id, 'title': title,
+                    'action': 'error',
+                    'reason': "Sessiya chiqarib yuborilgan",
+                    'error_type': type(e).__name__,
+                })
+                break  # stop entirely — session is dead
+            except ACCOUNT_BANNED_EXCEPTIONS as e:
+                await _mark_account_banned(account.pk)
+                results.append({
+                    'chat_id': entity.id, 'title': title,
+                    'action': 'error',
+                    'reason': "Akkaunt bloklangan",
+                    'error_type': type(e).__name__,
+                })
+                break
+            except Exception as e:
+                results.append({
+                    'chat_id': entity.id, 'title': title,
+                    'action': 'error',
+                    'reason': str(e)[:200],
+                    'error_type': type(e).__name__,
+                })
+
+            # Pause between leaves to avoid floodwait
+            await asyncio.sleep(random.uniform(delay_min, delay_max))
+
+        return results
+
     finally:
         try:
             await client.disconnect()

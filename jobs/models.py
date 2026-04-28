@@ -91,6 +91,8 @@ class Task(models.Model):
         ('create_groups', 'Guruh yaratish'),
         ('create_channels', 'Kanal yaratish'),
         ('join_channel', "Kanalga qo'shilish"),
+        ('leave_groups', "Guruhlardan chiqish (admin emas)"),
+        ('leave_channels', "Kanallardan chiqish (admin emas)"),
         ('boost_views', 'View oshirish'),
         ('react_to_post', 'Reaksiya qo\'yish'),
         ('vote_poll', 'Ovoz berish'),

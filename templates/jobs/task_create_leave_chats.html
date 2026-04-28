@@ -1,0 +1,126 @@
+{% extends 'base.html' %}
+{% block content %}
+{% if kind == 'group' %}
+    {% url 'jobs:task_create_leave_groups' as form_url %}
+{% else %}
+    {% url 'jobs:task_create_leave_channels' as form_url %}
+{% endif %}
+
+<div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
+    <div>
+        <a href="{% url 'accounts:dashboard' %}" class="text-muted text-decoration-none small">
+            <i class="bi bi-arrow-left me-1"></i>Akkauntlar
+        </a>
+        <h2 class="fw-bold mb-1 mt-1">
+            <i class="bi bi-box-arrow-left text-danger me-2"></i>
+            Admin emas {{ kind_label|lower }}lardan chiqish
+        </h2>
+        <p class="text-muted mb-0">
+            Tanlangan {{ accounts|length }} ta akkaunt o'zi <strong>creator</strong> yoki
+            <strong>admin</strong> bo'lmagan barcha {{ kind_label|lower }}lardan chiqib ketadi.
+        </p>
+    </div>
+</div>
+
+<form method="post" action="{{ form_url }}" class="row g-3">
+    {% csrf_token %}
+    {% for aid in account_ids %}<input type="hidden" name="account_ids" value="{{ aid }}">{% endfor %}
+
+    <div class="col-lg-8">
+        <div class="card shadow-sm mb-3">
+            <div class="card-header bg-white border-bottom py-3">
+                <span class="fw-bold"><i class="bi bi-sliders me-2"></i>Parametrlar</span>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small text-uppercase text-muted">Min pauza (s)</label>
+                        <input type="number" name="delay_min_sec" value="2" min="0" step="0.5" required
+                               class="form-control rounded-pill bg-light border-0">
+                        <small class="text-muted">Har chiqishdan keyin pauza</small>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small text-uppercase text-muted">Max pauza (s)</label>
+                        <input type="number" name="delay_max_sec" value="6" min="0" step="0.5" required
+                               class="form-control rounded-pill bg-light border-0">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small text-uppercase text-muted">Parallel akkaunt</label>
+                        <input type="number" name="concurrency" value="3" min="1" max="20" required
+                               class="form-control rounded-pill bg-light border-0">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold small text-uppercase text-muted">Min akkaunt yoshi (daq)</label>
+                        <input type="number" name="min_account_age_minutes" value="0" min="0" required
+                               class="form-control rounded-pill bg-light border-0">
+                        <small class="text-muted">0 = tekshirilmaydi</small>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold small text-uppercase text-muted">
+                            Maks {{ kind_label|lower }} (akkaunt boshiga)
+                        </label>
+                        <input type="number" name="max_chats" value="" min="1" placeholder="cheksiz"
+                               class="form-control rounded-pill bg-light border-0">
+                        <small class="text-muted">Bo'sh = barcha admin emas {{ kind_label|lower }}lar</small>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="skip_inactive" name="skip_inactive" checked>
+                            <label class="form-check-label" for="skip_inactive">Nofaol akkauntlarni o'tkazib yuborish</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="skip_spam" name="skip_spam" checked>
+                            <label class="form-check-label" for="skip_spam">Spam akkauntlarni o'tkazib yuborish</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% include 'jobs/_schedule_block.html' %}
+
+        <div class="alert alert-warning border-0 shadow-sm rounded-4 d-flex align-items-start gap-3">
+            <i class="bi bi-exclamation-triangle-fill fs-4 text-warning"></i>
+            <div>
+                <strong>Diqqat:</strong> bu amal qaytarib bo'lmaydi.
+                <ul class="mb-0 mt-2 ps-3 small">
+                    <li>Akkaunt <em>creator</em> yoki <em>admin</em> bo'lgan {{ kind_label|lower }}lar <strong>tegmaydi</strong></li>
+                    <li>Boshqa barcha {{ kind_label|lower }}lardan chiqib ketadi (re-invite kerak bo'lsa eski havola qaytmaydi)</li>
+                    <li>Tezligi yuqori bo'lsa Telegram FloodWait beradi — pauzani 2-6 sekund qoldiring</li>
+                </ul>
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-danger btn-lg rounded-pill px-5 fw-bold shadow-sm">
+            <i class="bi bi-box-arrow-left me-2"></i>Chiqish vazifasini ishga tushirish
+        </button>
+        <a href="{% url 'accounts:dashboard' %}" class="btn btn-light rounded-pill px-4 ms-2">
+            Bekor qilish
+        </a>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white border-bottom py-3">
+                <span class="fw-bold"><i class="bi bi-people me-2"></i>Tanlangan akkauntlar</span>
+                <span class="badge bg-primary bg-opacity-10 text-primary border ms-2">{{ accounts|length }}</span>
+            </div>
+            <div class="card-body p-0">
+                <ul class="list-group list-group-flush">
+                    {% for a in accounts %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center py-2 px-3">
+                        <div class="text-truncate">
+                            <span class="fw-medium">{{ a.first_name|default:a.phone_number }}</span>
+                            {% if a.username %}<small class="text-muted ms-1">@{{ a.username }}</small>{% endif %}
+                        </div>
+                        <small class="text-muted">{{ a.phone_number }}</small>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+</form>
+{% endblock %}

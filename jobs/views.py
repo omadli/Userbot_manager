@@ -694,6 +694,97 @@ async def task_create_join_channel(request):
     })
 
 
+async def task_create_leave_chats(request, kind):
+    """Form for bulk-leaving non-admin groups/channels.
+
+    `kind` is bound by the URL pattern: 'group' or 'channel'.
+    """
+    user = await _require_login(request)
+    if user is None:
+        return _login_redirect(request)
+
+    if kind not in ('group', 'channel'):
+        messages.error(request, "Noto'g'ri kategoriya")
+        return redirect('accounts:dashboard')
+
+    raw_ids = request.GET.getlist('account_ids') or request.POST.getlist('account_ids')
+    try:
+        account_ids = [int(x) for x in raw_ids]
+    except (TypeError, ValueError):
+        account_ids = []
+
+    if not account_ids:
+        messages.error(request, "Akkauntlar tanlanmagan")
+        return redirect('accounts:dashboard')
+
+    accounts = await _load_accounts_for_task(user, account_ids)
+    if not accounts:
+        messages.error(request, "Tanlangan akkauntlar topilmadi")
+        return redirect('accounts:dashboard')
+
+    url_name = 'jobs:task_create_leave_groups' if kind == 'group' else 'jobs:task_create_leave_channels'
+
+    def _back():
+        return redirect(
+            f"{reverse(url_name)}?{urlencode([('account_ids', i) for i in account_ids])}"
+        )
+
+    if request.method == 'POST':
+        try:
+            delay_min = float(request.POST.get('delay_min_sec') or 2)
+            delay_max = float(request.POST.get('delay_max_sec') or 6)
+            concurrency = int(request.POST.get('concurrency') or 3)
+            min_age = int(request.POST.get('min_account_age_minutes') or 0)
+            max_chats_raw = (request.POST.get('max_chats') or '').strip()
+            max_chats = int(max_chats_raw) if max_chats_raw else None
+        except (ValueError, TypeError):
+            messages.error(request, "Parametrlarda xato")
+            return _back()
+
+        if delay_min < 0 or delay_max < delay_min:
+            messages.error(request, "Delay qiymatlari noto'g'ri")
+            return _back()
+        if concurrency < 1 or concurrency > 20:
+            messages.error(request, "Parallel 1-20 oralig'ida bo'lsin")
+            return _back()
+        if max_chats is not None and max_chats < 1:
+            max_chats = None
+
+        skip_inactive = request.POST.get('skip_inactive') == 'on'
+        skip_spam = request.POST.get('skip_spam') == 'on'
+
+        params = {
+            'account_ids': account_ids,
+            'kind': kind,
+            'delay_min_sec': delay_min,
+            'delay_max_sec': delay_max,
+            'concurrency': concurrency,
+            'min_account_age_minutes': min_age,
+            'skip_inactive': skip_inactive,
+            'skip_spam': skip_spam,
+            'max_chats': max_chats,
+        }
+        task = await Task.objects.acreate(
+            kind=f'leave_{kind}s',
+            owner=user,
+            params=params,
+            **_parse_schedule(request.POST),
+        )
+        kind_label = 'guruh' if kind == 'group' else 'kanal'
+        messages.success(
+            request,
+            f"Vazifa #{task.pk} navbatga qo'yildi — {len(accounts)} akkaunt admin emas {kind_label}lardan chiqadi.",
+        )
+        return redirect('jobs:task_detail', pk=task.pk)
+
+    return await render_async(request, 'jobs/task_create_leave_chats.html', {
+        'accounts': accounts,
+        'account_ids': account_ids,
+        'kind': kind,
+        'kind_label': 'Guruh' if kind == 'group' else 'Kanal',
+    })
+
+
 async def task_create_boost_views(request):
     user = await _require_login(request)
     if user is None:

@@ -194,6 +194,7 @@ async def dashboard(request):
             return redirect('accounts:dashboard')
 
         if action in ('create_groups', 'create_channels', 'join_channel',
+                      'leave_groups', 'leave_channels',
                       'boost_views', 'react_to_post', 'vote_poll',
                       'press_start', 'run_script', 'account_warming'):
             from urllib.parse import urlencode
@@ -204,6 +205,8 @@ async def dashboard(request):
                 'create_groups':  'jobs:task_create_groups',
                 'create_channels': 'jobs:task_create_channels',
                 'join_channel':    'jobs:task_create_join_channel',
+                'leave_groups':    'jobs:task_create_leave_groups',
+                'leave_channels':  'jobs:task_create_leave_channels',
                 'boost_views':     'jobs:task_create_boost_views',
                 'react_to_post':   'jobs:task_create_react_to_post',
                 'vote_poll':       'jobs:task_create_vote_poll',
