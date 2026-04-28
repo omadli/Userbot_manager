@@ -8,6 +8,7 @@ urlpatterns = [
     path('profile/', views.profile, name='profile'),
     path('add/', views.initiate_telethon_login, name='add_account'),
     path('verify/', views.verify_telethon_login, name='verify_login'),
+    path('cancel-login/', views.cancel_login, name='cancel_login'),
     path('relogin/<int:pk>/', views.relogin_account, name='relogin_account'),
     path('edit/<int:pk>/', views.edit_account, name='edit_account'),
     path('detail/<int:pk>/', views.account_detail, name='account_detail'),

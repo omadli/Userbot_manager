@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex align-items-center mb-4 flex-wrap gap-2">
+    <a href="{% url 'accounts:dashboard' %}" class="text-muted text-decoration-none small me-3"><i class="bi bi-arrow-left me-1"></i>Akkauntlar</a>
+    <h2 class="fw-bold mb-0"><i class="bi bi-check2-all text-primary me-2"></i>Hammasini o'qilgan deb belgilash</h2>
+</div>
+
+<form method="post" action="{% url 'jobs:task_create_mark_all_read' %}" class="row g-3">
+    {% csrf_token %}
+    {% for aid in account_ids %}<input type="hidden" name="account_ids" value="{{ aid }}">{% endfor %}
+
+    <div class="col-lg-8">
+        <div class="card shadow-sm mb-3">
+            <div class="card-header bg-white border-bottom py-3"><span class="fw-bold"><i class="bi bi-sliders me-2"></i>Parametrlar</span></div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6"><label class="form-label small fw-bold text-uppercase text-muted">Maks dialog</label><input type="number" name="max_dialogs" value="500" min="10" max="5000" class="form-control rounded-pill bg-light border-0"><small class="text-muted">Akkaunt boshiga shuncha dialog tekshiriladi</small></div>
+                    <div class="col-md-6"><label class="form-label small fw-bold text-uppercase text-muted">Parallel akkaunt</label><input type="number" name="concurrency" value="3" min="1" max="10" class="form-control rounded-pill bg-light border-0"></div>
+                    <div class="col-md-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="skip_inactive" checked id="si"><label class="form-check-label" for="si">Nofaol — skip</label></div></div>
+                    <div class="col-md-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="skip_spam" checked id="ss"><label class="form-check-label" for="ss">Spam — skip</label></div></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="alert alert-info border-0 shadow-sm rounded-4">
+            <i class="bi bi-info-circle me-1"></i>
+            Bu vazifa har akkaunt uchun barcha unread dialog'lar (lichka, guruh, kanal)ni "o'qilgan" deb belgilaydi. Aktivlik ko'rsatkichi.
+        </div>
+
+        {% include 'jobs/_schedule_block.html' %}
+
+        <button class="btn btn-gradient btn-lg rounded-pill px-5 fw-bold shadow-sm"><i class="bi bi-check2-all me-2"></i>Boshlash</button>
+        <a href="{% url 'accounts:dashboard' %}" class="btn btn-light rounded-pill px-4 ms-2">Bekor</a>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white border-bottom py-3"><span class="fw-bold"><i class="bi bi-people me-2"></i>Akkauntlar</span> <span class="badge bg-primary bg-opacity-10 text-primary border ms-2">{{ accounts|length }}</span></div>
+            <div class="card-body p-0"><ul class="list-group list-group-flush">{% for a in accounts %}<li class="list-group-item py-2 px-3 small">{{ a.first_name|default:a.phone_number }}</li>{% endfor %}</ul></div>
+        </div>
+    </div>
+</form>
+{% endblock %}

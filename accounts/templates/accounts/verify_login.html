@@ -35,8 +35,26 @@
                 <button type="submit" class="btn btn-success w-100 py-2 fs-5 rounded-pill shadow fw-bold">
                     <i class="bi bi-check2-circle me-1"></i> Tasdiqlash
                 </button>
-                <a href="{% url 'accounts:dashboard' %}" class="btn btn-light border w-100 mt-3 py-2 rounded-pill fw-medium text-center d-block text-dark text-decoration-none">Bekor qilish</a>
             </form>
+
+            {% if needs_password %}
+            <div class="alert alert-warning rounded-3 small mt-3 mb-0">
+                <i class="bi bi-info-circle me-1"></i>
+                2FA parolni bilmaysizmi? Bir necha noto'g'ri urinishdan keyin Telegram raqamni vaqtincha bloklashi mumkin.
+                Bu sessiyani <strong>tashlab</strong>, boshqa raqam qo'shing — keyin bu akkauntni qaytadan urinib ko'rasiz.
+            </div>
+            {% endif %}
+
+            <!-- Bu form sessiyani tozalaydi: yuqoridagi form bilan target='_self' qarama-qarshi
+                 bo'lmasligi uchun alohida POST sifatida emas, GET-redirect sifatida ishlatamiz -->
+            <a href="{% url 'accounts:cancel_login' %}"
+               class="btn btn-outline-secondary w-100 mt-3 py-2 rounded-pill fw-medium">
+                <i class="bi bi-x-circle me-1"></i> Sessiyani bekor qilish va boshqa akkaunt qo'shish
+            </a>
+            <a href="{% url 'accounts:dashboard' %}"
+               class="btn btn-link w-100 mt-2 text-muted text-decoration-none small">
+                Dashboard'ga qaytish (sessiya saqlanadi)
+            </a>
         </div>
     </div>
 </div>

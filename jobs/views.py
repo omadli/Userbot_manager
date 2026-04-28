@@ -785,6 +785,328 @@ async def task_create_leave_chats(request, kind):
     })
 
 
+async def task_create_send_message(request):
+    """Bulk-send a message from each selected account to a list of targets."""
+    user = await _require_login(request)
+    if user is None:
+        return _login_redirect(request)
+
+    raw_ids = request.GET.getlist('account_ids') or request.POST.getlist('account_ids')
+    try:
+        account_ids = [int(x) for x in raw_ids]
+    except (TypeError, ValueError):
+        account_ids = []
+    if not account_ids:
+        messages.error(request, "Akkauntlar tanlanmagan")
+        return redirect('accounts:dashboard')
+
+    accounts = await _load_accounts_for_task(user, account_ids)
+    if not accounts:
+        messages.error(request, "Tanlangan akkauntlar topilmadi")
+        return redirect('accounts:dashboard')
+
+    def _back():
+        return redirect(
+            f"{reverse('jobs:task_create_send_message')}?{urlencode([('account_ids', i) for i in account_ids])}"
+        )
+
+    if request.method == 'POST':
+        message = (request.POST.get('message') or '').strip()
+        raw_targets = request.POST.get('targets') or ''
+        targets = [ln.strip() for ln in raw_targets.splitlines() if ln.strip()]
+        if not message:
+            messages.error(request, "Xabar matni bo'sh")
+            return _back()
+        if not targets:
+            messages.error(request, "Targetlar ro'yxati bo'sh")
+            return _back()
+        if len(targets) > 500:
+            messages.error(request, "Bir safarda 500 tadan ortiq target bo'lmasin")
+            return _back()
+        try:
+            delay_min = float(request.POST.get('delay_min_sec') or 30)
+            delay_max = float(request.POST.get('delay_max_sec') or 90)
+            concurrency = int(request.POST.get('concurrency') or 3)
+            min_age = int(request.POST.get('min_account_age_minutes') or 0)
+        except (ValueError, TypeError):
+            messages.error(request, "Parametrlarda xato")
+            return _back()
+        if delay_min < 0 or delay_max < delay_min:
+            messages.error(request, "Delay qiymatlari noto'g'ri")
+            return _back()
+
+        params = {
+            'account_ids': account_ids,
+            'targets': targets,
+            'message': message,
+            'delay_min_sec': delay_min,
+            'delay_max_sec': delay_max,
+            'concurrency': concurrency,
+            'min_account_age_minutes': min_age,
+            'skip_inactive': request.POST.get('skip_inactive') == 'on',
+            'skip_spam': request.POST.get('skip_spam') == 'on',
+        }
+        task = await Task.objects.acreate(
+            kind='send_message', owner=user, params=params,
+            **_parse_schedule(request.POST),
+        )
+        messages.success(request,
+            f"Vazifa #{task.pk} navbatga qo'yildi ({len(accounts)} × {len(targets)} xabar).")
+        return redirect('jobs:task_detail', pk=task.pk)
+
+    return await render_async(request, 'jobs/task_create_send_message.html', {
+        'accounts': accounts, 'account_ids': account_ids,
+    })
+
+
+async def task_create_update_profile(request):
+    """Bulk-update Telegram profile fields (fixed values or random from a NamePool)."""
+    user = await _require_login(request)
+    if user is None:
+        return _login_redirect(request)
+
+    raw_ids = request.GET.getlist('account_ids') or request.POST.getlist('account_ids')
+    try:
+        account_ids = [int(x) for x in raw_ids]
+    except (TypeError, ValueError):
+        account_ids = []
+    if not account_ids:
+        messages.error(request, "Akkauntlar tanlanmagan")
+        return redirect('accounts:dashboard')
+
+    accounts = await _load_accounts_for_task(user, account_ids)
+    if not accounts:
+        messages.error(request, "Tanlangan akkauntlar topilmadi")
+        return redirect('accounts:dashboard')
+
+    pools = await sync_to_async(list)(
+        NamePool.objects.filter(owner=user).order_by('-created_at')
+    )
+
+    def _back():
+        return redirect(
+            f"{reverse('jobs:task_create_update_profile')}?{urlencode([('account_ids', i) for i in account_ids])}"
+        )
+
+    if request.method == 'POST':
+        mode = request.POST.get('mode', 'fixed')
+        if mode not in ('fixed', 'pool'):
+            mode = 'fixed'
+
+        try:
+            concurrency = int(request.POST.get('concurrency') or 3)
+            delay_min = float(request.POST.get('delay_min_sec') or 5)
+            delay_max = float(request.POST.get('delay_max_sec') or 15)
+        except (ValueError, TypeError):
+            messages.error(request, "Parametrlarda xato")
+            return _back()
+
+        params = {
+            'account_ids': account_ids,
+            'mode': mode,
+            'delay_min_sec': delay_min,
+            'delay_max_sec': delay_max,
+            'concurrency': concurrency,
+            'skip_inactive': request.POST.get('skip_inactive') == 'on',
+            'skip_spam': request.POST.get('skip_spam') == 'on',
+        }
+        if mode == 'fixed':
+            for key in ('first_name', 'last_name', 'about', 'username'):
+                val = request.POST.get(key, '').strip()
+                # Empty string = leave unchanged. Use a separate "clear" checkbox
+                # if a future version needs to actively clear a field.
+                params[key] = val
+        else:
+            for key in ('first_name_pool_id', 'last_name_pool_id', 'username_pool_id'):
+                pid = request.POST.get(key) or ''
+                params[key] = int(pid) if pid.isdigit() else None
+
+        any_field = (
+            params.get('first_name') or params.get('last_name')
+            or params.get('about') or params.get('username')
+            or params.get('first_name_pool_id') or params.get('last_name_pool_id')
+            or params.get('username_pool_id')
+        )
+        if not any_field:
+            messages.error(request, "Hech bo'lmaganda bitta maydonni to'ldiring")
+            return _back()
+
+        task = await Task.objects.acreate(
+            kind='update_profile', owner=user, params=params,
+            **_parse_schedule(request.POST),
+        )
+        messages.success(request, f"Vazifa #{task.pk} navbatga qo'yildi ({len(accounts)} akkaunt).")
+        return redirect('jobs:task_detail', pk=task.pk)
+
+    return await render_async(request, 'jobs/task_create_update_profile.html', {
+        'accounts': accounts, 'account_ids': account_ids, 'pools': pools,
+    })
+
+
+async def task_create_view_stories(request):
+    """Mark stories as seen + (optional) random reactions."""
+    user = await _require_login(request)
+    if user is None:
+        return _login_redirect(request)
+
+    raw_ids = request.GET.getlist('account_ids') or request.POST.getlist('account_ids')
+    try:
+        account_ids = [int(x) for x in raw_ids]
+    except (TypeError, ValueError):
+        account_ids = []
+    if not account_ids:
+        messages.error(request, "Akkauntlar tanlanmagan")
+        return redirect('accounts:dashboard')
+    accounts = await _load_accounts_for_task(user, account_ids)
+    if not accounts:
+        messages.error(request, "Tanlangan akkauntlar topilmadi")
+        return redirect('accounts:dashboard')
+
+    def _back():
+        return redirect(
+            f"{reverse('jobs:task_create_view_stories')}?{urlencode([('account_ids', i) for i in account_ids])}"
+        )
+
+    if request.method == 'POST':
+        try:
+            react_chance = float(request.POST.get('react_chance') or 0)
+            max_peers = int(request.POST.get('max_peers') or 50)
+            concurrency = int(request.POST.get('concurrency') or 3)
+        except (ValueError, TypeError):
+            messages.error(request, "Parametrlarda xato")
+            return _back()
+        if not (0 <= react_chance <= 1):
+            messages.error(request, "react_chance 0..1 oralig'ida bo'lsin")
+            return _back()
+
+        params = {
+            'account_ids': account_ids,
+            'react_chance': react_chance,
+            'max_peers': max_peers,
+            'concurrency': concurrency,
+            'skip_inactive': request.POST.get('skip_inactive') == 'on',
+            'skip_spam': request.POST.get('skip_spam') == 'on',
+        }
+        task = await Task.objects.acreate(
+            kind='view_stories', owner=user, params=params,
+            **_parse_schedule(request.POST),
+        )
+        messages.success(request, f"Vazifa #{task.pk} navbatga qo'yildi.")
+        return redirect('jobs:task_detail', pk=task.pk)
+
+    return await render_async(request, 'jobs/task_create_view_stories.html', {
+        'accounts': accounts, 'account_ids': account_ids,
+    })
+
+
+async def task_create_mark_all_read(request):
+    """Mark all unread dialogs as read for each selected account."""
+    user = await _require_login(request)
+    if user is None:
+        return _login_redirect(request)
+
+    raw_ids = request.GET.getlist('account_ids') or request.POST.getlist('account_ids')
+    try:
+        account_ids = [int(x) for x in raw_ids]
+    except (TypeError, ValueError):
+        account_ids = []
+    if not account_ids:
+        messages.error(request, "Akkauntlar tanlanmagan")
+        return redirect('accounts:dashboard')
+    accounts = await _load_accounts_for_task(user, account_ids)
+    if not accounts:
+        messages.error(request, "Tanlangan akkauntlar topilmadi")
+        return redirect('accounts:dashboard')
+
+    if request.method == 'POST':
+        try:
+            max_dialogs = int(request.POST.get('max_dialogs') or 500)
+            concurrency = int(request.POST.get('concurrency') or 3)
+        except (ValueError, TypeError):
+            max_dialogs, concurrency = 500, 3
+
+        params = {
+            'account_ids': account_ids,
+            'max_dialogs': max_dialogs,
+            'concurrency': concurrency,
+            'skip_inactive': request.POST.get('skip_inactive') == 'on',
+            'skip_spam': request.POST.get('skip_spam') == 'on',
+        }
+        task = await Task.objects.acreate(
+            kind='mark_all_read', owner=user, params=params,
+            **_parse_schedule(request.POST),
+        )
+        messages.success(request, f"Vazifa #{task.pk} navbatga qo'yildi.")
+        return redirect('jobs:task_detail', pk=task.pk)
+
+    return await render_async(request, 'jobs/task_create_mark_all_read.html', {
+        'accounts': accounts, 'account_ids': account_ids,
+    })
+
+
+async def task_create_set_2fa_password(request):
+    """Set / change 2FA cloud password on each selected account."""
+    user = await _require_login(request)
+    if user is None:
+        return _login_redirect(request)
+
+    raw_ids = request.GET.getlist('account_ids') or request.POST.getlist('account_ids')
+    try:
+        account_ids = [int(x) for x in raw_ids]
+    except (TypeError, ValueError):
+        account_ids = []
+    if not account_ids:
+        messages.error(request, "Akkauntlar tanlanmagan")
+        return redirect('accounts:dashboard')
+    accounts = await _load_accounts_for_task(user, account_ids)
+    if not accounts:
+        messages.error(request, "Tanlangan akkauntlar topilmadi")
+        return redirect('accounts:dashboard')
+
+    def _back():
+        return redirect(
+            f"{reverse('jobs:task_create_set_2fa_password')}?{urlencode([('account_ids', i) for i in account_ids])}"
+        )
+
+    if request.method == 'POST':
+        new_password = (request.POST.get('new_password') or '').strip()
+        confirm = (request.POST.get('confirm_password') or '').strip()
+        hint = (request.POST.get('hint') or '').strip()
+        try:
+            concurrency = int(request.POST.get('concurrency') or 2)
+        except (ValueError, TypeError):
+            concurrency = 2
+
+        if not new_password:
+            messages.error(request, "Yangi parol bo'sh")
+            return _back()
+        if new_password != confirm:
+            messages.error(request, "Parollar mos kelmadi")
+            return _back()
+        if len(new_password) < 4:
+            messages.error(request, "Parol kamida 4 belgili bo'lsin")
+            return _back()
+
+        params = {
+            'account_ids': account_ids,
+            'new_password': new_password,
+            'hint': hint,
+            'concurrency': concurrency,
+            'skip_inactive': request.POST.get('skip_inactive') == 'on',
+            'skip_spam': request.POST.get('skip_spam') == 'on',
+        }
+        task = await Task.objects.acreate(
+            kind='set_2fa_password', owner=user, params=params,
+            **_parse_schedule(request.POST),
+        )
+        messages.success(request, f"Vazifa #{task.pk} navbatga qo'yildi.")
+        return redirect('jobs:task_detail', pk=task.pk)
+
+    return await render_async(request, 'jobs/task_create_set_2fa_password.html', {
+        'accounts': accounts, 'account_ids': account_ids,
+    })
+
+
 async def task_create_boost_views(request):
     user = await _require_login(request)
     if user is None:

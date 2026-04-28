@@ -1,0 +1,74 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex align-items-center mb-4 flex-wrap gap-2">
+    <a href="{% url 'accounts:dashboard' %}" class="text-muted text-decoration-none small me-3"><i class="bi bi-arrow-left me-1"></i>Akkauntlar</a>
+    <h2 class="fw-bold mb-0"><i class="bi bi-person-gear text-primary me-2"></i>Profilni yangilash</h2>
+</div>
+
+<form method="post" action="{% url 'jobs:task_create_update_profile' %}" class="row g-3" id="profile-form">
+    {% csrf_token %}
+    {% for aid in account_ids %}<input type="hidden" name="account_ids" value="{{ aid }}">{% endfor %}
+
+    <div class="col-lg-8">
+        <div class="card shadow-sm mb-3">
+            <div class="card-header bg-white border-bottom py-3 d-flex flex-wrap gap-3">
+                <div class="form-check"><input class="form-check-input" type="radio" name="mode" value="fixed" id="mode-fixed" checked><label class="form-check-label fw-bold" for="mode-fixed">Aniq qiymat (barcha akkauntlarga bir xil)</label></div>
+                <div class="form-check"><input class="form-check-input" type="radio" name="mode" value="pool" id="mode-pool"><label class="form-check-label fw-bold" for="mode-pool">NamePool'dan random</label></div>
+            </div>
+
+            <div class="card-body">
+                <div id="fixed-fields" class="row g-3">
+                    <div class="col-md-6"><label class="form-label small fw-bold text-uppercase text-muted">Ism</label><input type="text" name="first_name" maxlength="64" class="form-control rounded-pill bg-light border-0" placeholder="Bo'sh = o'zgarmaydi"></div>
+                    <div class="col-md-6"><label class="form-label small fw-bold text-uppercase text-muted">Familiya</label><input type="text" name="last_name" maxlength="64" class="form-control rounded-pill bg-light border-0" placeholder="Bo'sh = o'zgarmaydi"></div>
+                    <div class="col-12"><label class="form-label small fw-bold text-uppercase text-muted">Bio (maks 140)</label><textarea name="about" rows="2" maxlength="140" class="form-control" placeholder="Bo'sh = o'zgarmaydi"></textarea></div>
+                    <div class="col-md-6"><label class="form-label small fw-bold text-uppercase text-muted">Username</label><input type="text" name="username" maxlength="32" class="form-control rounded-pill bg-light border-0" placeholder="@'siz, bo'sh = o'zgarmaydi"><small class="text-muted">Bir xil username ko'p akkauntda ishlamaydi — pool tavsiya etiladi.</small></div>
+                </div>
+
+                <div id="pool-fields" class="row g-3" style="display: none;">
+                    <div class="col-md-6"><label class="form-label small fw-bold text-uppercase text-muted">Ism uchun pool</label><select name="first_name_pool_id" class="form-select rounded-pill bg-light border-0"><option value="">— tegmaydi —</option>{% for p in pools %}<option value="{{ p.pk }}">{{ p.name }} ({{ p.names.count }})</option>{% endfor %}</select></div>
+                    <div class="col-md-6"><label class="form-label small fw-bold text-uppercase text-muted">Familiya uchun pool</label><select name="last_name_pool_id" class="form-select rounded-pill bg-light border-0"><option value="">— tegmaydi —</option>{% for p in pools %}<option value="{{ p.pk }}">{{ p.name }} ({{ p.names.count }})</option>{% endfor %}</select></div>
+                    <div class="col-12"><label class="form-label small fw-bold text-uppercase text-muted">Username uchun pool</label><select name="username_pool_id" class="form-select rounded-pill bg-light border-0"><option value="">— tegmaydi —</option>{% for p in pools %}<option value="{{ p.pk }}">{{ p.name }} ({{ p.names.count }})</option>{% endfor %}</select><small class="text-muted">Pool ichida har akkaunt uchun random nom tanlanadi.</small></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm mb-3">
+            <div class="card-header bg-white border-bottom py-3"><span class="fw-bold"><i class="bi bi-sliders me-2"></i>Tezlik</span></div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-4"><label class="form-label small fw-bold text-uppercase text-muted">Min pauza (s)</label><input type="number" name="delay_min_sec" value="5" min="0" step="0.5" class="form-control rounded-pill bg-light border-0"></div>
+                    <div class="col-md-4"><label class="form-label small fw-bold text-uppercase text-muted">Max pauza (s)</label><input type="number" name="delay_max_sec" value="15" min="0" step="0.5" class="form-control rounded-pill bg-light border-0"></div>
+                    <div class="col-md-4"><label class="form-label small fw-bold text-uppercase text-muted">Parallel</label><input type="number" name="concurrency" value="3" min="1" max="10" class="form-control rounded-pill bg-light border-0"></div>
+                    <div class="col-md-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="skip_inactive" checked id="si"><label class="form-check-label" for="si">Nofaol — skip</label></div></div>
+                    <div class="col-md-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="skip_spam" checked id="ss"><label class="form-check-label" for="ss">Spam — skip</label></div></div>
+                </div>
+            </div>
+        </div>
+
+        {% include 'jobs/_schedule_block.html' %}
+
+        <button class="btn btn-primary btn-lg rounded-pill px-5 fw-bold shadow-sm"><i class="bi bi-check-lg me-2"></i>Yangilashni boshlash</button>
+        <a href="{% url 'accounts:dashboard' %}" class="btn btn-light rounded-pill px-4 ms-2">Bekor</a>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white border-bottom py-3"><span class="fw-bold"><i class="bi bi-people me-2"></i>Akkauntlar</span> <span class="badge bg-primary bg-opacity-10 text-primary border ms-2">{{ accounts|length }}</span></div>
+            <div class="card-body p-0"><ul class="list-group list-group-flush">{% for a in accounts %}<li class="list-group-item py-2 px-3 small">{{ a.first_name|default:a.phone_number }}{% if a.username %} <span class="text-muted">@{{ a.username }}</span>{% endif %}</li>{% endfor %}</ul></div>
+        </div>
+    </div>
+</form>
+
+<script>
+(function(){
+    const fixed = document.getElementById('fixed-fields');
+    const pool  = document.getElementById('pool-fields');
+    document.querySelectorAll('input[name="mode"]').forEach(r => {
+        r.addEventListener('change', () => {
+            if (r.value === 'pool' && r.checked) { pool.style.display = ''; fixed.style.display = 'none'; }
+            else if (r.value === 'fixed' && r.checked) { fixed.style.display = ''; pool.style.display = 'none'; }
+        });
+    });
+})();
+</script>
+{% endblock %}

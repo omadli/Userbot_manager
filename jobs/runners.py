@@ -1637,12 +1637,533 @@ from .services import (
 
 
 # Map task.kind → runner class. The worker uses this.
+class SendMessageRunner(TaskRunner):
+    """Send a message from each account to each target.
+
+    Params:
+      account_ids   list[int]
+      targets       list[str]   @user / t.me/... per line
+      message       str         body text (max 4096)
+      delay_min_sec, delay_max_sec, concurrency
+      skip_inactive, skip_spam, min_account_age_minutes
+    """
+
+    async def run(self):
+        from .services import send_message_for_account
+
+        p = self.params
+        account_ids = list(p.get('account_ids') or [])
+        raw_targets = p.get('targets') or []
+        message = (p.get('message') or '').strip()
+        delay_min = float(p.get('delay_min_sec', 30))
+        delay_max = float(p.get('delay_max_sec', 90))
+        concurrency = max(1, int(p.get('concurrency', 3)))
+        min_age_minutes = int(p.get('min_account_age_minutes', 0))
+        skip_inactive = bool(p.get('skip_inactive', True))
+        skip_spam = bool(p.get('skip_spam', True))
+
+        if delay_max < delay_min:
+            delay_max = delay_min
+
+        seen, targets = set(), []
+        for t in raw_targets:
+            s = (t or '').strip()
+            if s and s not in seen:
+                seen.add(s)
+                targets.append(s)
+
+        if not message:
+            await self.log('error', "Xabar matni bo'sh")
+            await self.update_progress(status='failed', error="Empty message",
+                                       finished_at=timezone.now())
+            return
+        if not targets:
+            await self.log('error', "Target ro'yxati bo'sh")
+            await self.update_progress(status='failed', error="No targets",
+                                       finished_at=timezone.now())
+            return
+
+        accounts_qs = Account.objects.filter(
+            id__in=account_ids, owner=self.task.owner,
+        ).select_related('device_setting')
+        if skip_inactive:
+            accounts_qs = accounts_qs.filter(is_active=True)
+        if skip_spam:
+            accounts_qs = accounts_qs.filter(is_spam=False)
+        accounts = await sync_to_async(list)(accounts_qs)
+        if not accounts:
+            await self.log('error', "Filtrga mos akkaunt topilmadi")
+            await self.update_progress(status='failed', error="No accounts",
+                                       finished_at=timezone.now())
+            return
+
+        total = len(accounts) * len(targets)
+        await self.update_progress(total=total)
+        await self.log('info',
+            f"{len(accounts)} ta akkaunt × {len(targets)} ta target = {total} xabar")
+
+        sem = asyncio.Semaphore(concurrency)
+
+        async def process_account(account):
+            async with sem:
+                if await self.is_cancelled():
+                    return
+                if min_age_minutes > 0:
+                    age_min = (timezone.now() - account.created_at).total_seconds() / 60
+                    if age_min < min_age_minutes:
+                        await self.log('warning',
+                            f"Akkaunt yangi ({int(age_min)} daq) — chetlab o'tildi",
+                            account=account, step='warmup_skip')
+                        for _ in targets:
+                            await self.incr_done(success=False)
+                        return
+                if not account.session_string:
+                    await self.log('error', "Sessiya yo'q", account=account, step='no_session')
+                    for _ in targets:
+                        await self.incr_done(success=False)
+                    return
+
+                for idx, target in enumerate(targets, start=1):
+                    if await self.is_cancelled():
+                        return
+                    if not await self.quota_ok(account):
+                        await self.incr_done(success=False)
+                        continue
+
+                    flood_retries = 0
+                    while True:
+                        try:
+                            result = await send_message_for_account(account, target, message)
+                        except FloodWaitError as e:
+                            wait = int(getattr(e, 'seconds', 0) or 0)
+                            if wait > FLOOD_HARD_CAP or flood_retries >= MAX_FLOOD_RETRIES:
+                                await self.log('error',
+                                    f"FloodWait juda uzoq ({wait}s) — tashlandi",
+                                    account=account, step='flood_giveup',
+                                    telegram_error='FloodWaitError')
+                                await self.incr_done(success=False)
+                                break
+                            flood_retries += 1
+                            await asyncio.sleep(wait + 1)
+                            continue
+
+                        if result['success']:
+                            await self.log('success',
+                                f"✓ {target} ga yuborildi",
+                                account=account, step='sent')
+                            await self.incr_done(success=True)
+                        else:
+                            await self.log('error',
+                                f"{target}: {result['error']}",
+                                account=account, step='send_failed',
+                                telegram_error=result.get('error_type', ''))
+                            await self.incr_done(success=False)
+                            if result.get('stop_account'):
+                                remaining = len(targets) - idx
+                                for _ in range(remaining):
+                                    await self.incr_done(success=False)
+                                return
+                        break
+
+                    if idx < len(targets):
+                        await asyncio.sleep(random.uniform(delay_min, delay_max))
+
+        await asyncio.gather(*[process_account(a) for a in accounts], return_exceptions=True)
+
+        if await self.is_cancelled():
+            await self.update_progress(status='cancelled', finished_at=timezone.now())
+            await self.log('warning', "Vazifa bekor qilindi")
+        else:
+            await self.update_progress(status='completed', finished_at=timezone.now())
+            await self.log('success', "Vazifa yakunlandi")
+
+
+class UpdateProfileRunner(TaskRunner):
+    """Set first_name/last_name/about/username on each account.
+
+    Params:
+      account_ids        list[int]
+      mode               'fixed' | 'pool'  — fixed values vs random from a NamePool
+      first_name, last_name, about, username  (when mode='fixed', any can be empty
+        string '' to leave unchanged — represented as None below)
+      first_name_pool_id, last_name_pool_id, username_pool_id (when mode='pool')
+      delay_min_sec, delay_max_sec, concurrency, skip_inactive, skip_spam
+    """
+
+    async def run(self):
+        from .services import update_profile_for_account
+
+        p = self.params
+        account_ids = list(p.get('account_ids') or [])
+        mode = p.get('mode', 'fixed')
+        delay_min = float(p.get('delay_min_sec', 5))
+        delay_max = float(p.get('delay_max_sec', 15))
+        concurrency = max(1, int(p.get('concurrency', 3)))
+        skip_inactive = bool(p.get('skip_inactive', True))
+        skip_spam = bool(p.get('skip_spam', True))
+
+        accounts_qs = Account.objects.filter(
+            id__in=account_ids, owner=self.task.owner,
+        ).select_related('device_setting')
+        if skip_inactive:
+            accounts_qs = accounts_qs.filter(is_active=True)
+        if skip_spam:
+            accounts_qs = accounts_qs.filter(is_spam=False)
+        accounts = await sync_to_async(list)(accounts_qs)
+        if not accounts:
+            await self.log('error', "Filtrga mos akkaunt topilmadi")
+            await self.update_progress(status='failed', error="No accounts",
+                                       finished_at=timezone.now())
+            return
+
+        # Resolve pools when mode='pool'
+        first_pool = last_pool = uname_pool = None
+        if mode == 'pool':
+            from .models import NamePool
+            for key, target in (('first_name_pool_id', 'first'),
+                                 ('last_name_pool_id', 'last'),
+                                 ('username_pool_id', 'uname')):
+                pid = p.get(key)
+                if pid:
+                    pool = await NamePool.objects.filter(pk=pid, owner=self.task.owner).afirst()
+                    if pool is None:
+                        await self.log('warning', f"Pool {pid} topilmadi ({key})")
+                        continue
+                    names = await sync_to_async(list)(pool.names.all().values_list('text', flat=True))
+                    if not names:
+                        await self.log('warning', f"Pool {pool.name} bo'sh ({key})")
+                        continue
+                    if target == 'first':
+                        first_pool = names
+                    elif target == 'last':
+                        last_pool = names
+                    else:
+                        uname_pool = names
+
+        await self.update_progress(total=len(accounts))
+        await self.log('info', f"{len(accounts)} ta akkaunt profilini yangilash")
+        sem = asyncio.Semaphore(concurrency)
+        rng = random.SystemRandom()
+
+        async def process_account(account):
+            async with sem:
+                if await self.is_cancelled():
+                    return
+                if not account.session_string:
+                    await self.log('error', "Sessiya yo'q", account=account, step='no_session')
+                    await self.incr_done(success=False)
+                    return
+
+                # Resolve fields per account
+                if mode == 'pool':
+                    fn = rng.choice(first_pool) if first_pool else None
+                    ln = rng.choice(last_pool) if last_pool else None
+                    un = rng.choice(uname_pool) if uname_pool else None
+                    ab = None  # bio not pool-driven (would need its own pool)
+                else:
+                    fn = p.get('first_name')
+                    ln = p.get('last_name')
+                    ab = p.get('about')
+                    un = p.get('username')
+                    # '' from form means "don't change" — only non-empty / explicitly cleared
+                    fn = fn if fn != '' else None
+                    ln = ln if ln != '' else None
+                    ab = ab if ab != '' else None
+                    un = un if un != '' else None
+
+                try:
+                    result = await update_profile_for_account(
+                        account, first_name=fn, last_name=ln, about=ab, username=un,
+                    )
+                except FloodWaitError as e:
+                    wait = int(getattr(e, 'seconds', 0) or 0)
+                    await self.log('warning', f"FloodWait {wait}s",
+                                   account=account, step='flood_wait')
+                    await self.incr_done(success=False)
+                    return
+
+                if result['success']:
+                    bits = []
+                    if fn is not None: bits.append(f"ism='{fn}'")
+                    if ln is not None: bits.append(f"familiya='{ln}'")
+                    if ab is not None: bits.append("bio")
+                    if un is not None: bits.append(f"username={result.get('username_status')}")
+                    await self.log('success',
+                        "✓ profil yangilandi: " + ", ".join(bits or ['—']),
+                        account=account, step='updated')
+                    await self.incr_done(success=True)
+                else:
+                    await self.log('error', result['error'],
+                                   account=account, step='update_failed',
+                                   telegram_error=result.get('error_type', ''))
+                    await self.incr_done(success=False)
+
+                await asyncio.sleep(random.uniform(delay_min, delay_max))
+
+        await asyncio.gather(*[process_account(a) for a in accounts], return_exceptions=True)
+
+        if await self.is_cancelled():
+            await self.update_progress(status='cancelled', finished_at=timezone.now())
+            await self.log('warning', "Vazifa bekor qilindi")
+        else:
+            await self.update_progress(status='completed', finished_at=timezone.now())
+            await self.log('success', "Vazifa yakunlandi")
+
+
+class ViewStoriesRunner(TaskRunner):
+    """View (and optionally react to) stories from subscribed peers.
+
+    Params:
+      account_ids, react_chance (0..1), max_peers, concurrency,
+      skip_inactive, skip_spam
+    """
+
+    async def run(self):
+        from .services import view_and_react_stories_for_account
+
+        p = self.params
+        account_ids = list(p.get('account_ids') or [])
+        react_chance = float(p.get('react_chance', 0))
+        max_peers = int(p.get('max_peers', 50))
+        concurrency = max(1, int(p.get('concurrency', 3)))
+        skip_inactive = bool(p.get('skip_inactive', True))
+        skip_spam = bool(p.get('skip_spam', True))
+
+        accounts_qs = Account.objects.filter(
+            id__in=account_ids, owner=self.task.owner,
+        ).select_related('device_setting')
+        if skip_inactive:
+            accounts_qs = accounts_qs.filter(is_active=True)
+        if skip_spam:
+            accounts_qs = accounts_qs.filter(is_spam=False)
+        accounts = await sync_to_async(list)(accounts_qs)
+        if not accounts:
+            await self.log('error', "Filtrga mos akkaunt topilmadi")
+            await self.update_progress(status='failed', error="No accounts",
+                                       finished_at=timezone.now())
+            return
+
+        await self.update_progress(total=len(accounts))
+        await self.log('info', f"{len(accounts)} ta akkaunt × stories ko'rish")
+        sem = asyncio.Semaphore(concurrency)
+
+        async def process_account(account):
+            async with sem:
+                if await self.is_cancelled():
+                    return
+                if not account.session_string:
+                    await self.log('error', "Sessiya yo'q",
+                                   account=account, step='no_session')
+                    await self.incr_done(success=False)
+                    return
+
+                try:
+                    result = await view_and_react_stories_for_account(
+                        account, react_chance=react_chance, max_peers=max_peers,
+                    )
+                except FloodWaitError as e:
+                    wait = int(getattr(e, 'seconds', 0) or 0)
+                    await self.log('warning', f"FloodWait {wait}s",
+                                   account=account, step='flood_wait')
+                    await self.incr_done(success=False)
+                    return
+
+                if result.get('success'):
+                    await self.log('success',
+                        f"✓ {result['peers_seen']} peer, {result['stories_seen']} stor., "
+                        f"{result['reactions_sent']} reaksiya, {result['errors']} xato",
+                        account=account, step='stories_done')
+                    await self.incr_done(success=True)
+                else:
+                    await self.log('error', result.get('error', 'Noma\'lum xato'),
+                                   account=account, step='stories_failed',
+                                   telegram_error=result.get('error_type', ''))
+                    await self.incr_done(success=False)
+
+        await asyncio.gather(*[process_account(a) for a in accounts], return_exceptions=True)
+
+        if await self.is_cancelled():
+            await self.update_progress(status='cancelled', finished_at=timezone.now())
+            await self.log('warning', "Vazifa bekor qilindi")
+        else:
+            await self.update_progress(status='completed', finished_at=timezone.now())
+            await self.log('success', "Vazifa yakunlandi")
+
+
+class MarkAllReadRunner(TaskRunner):
+    """For each account, send_read_acknowledge across all unread dialogs."""
+
+    async def run(self):
+        from .services import mark_all_read_for_account
+
+        p = self.params
+        account_ids = list(p.get('account_ids') or [])
+        max_dialogs = int(p.get('max_dialogs', 500))
+        concurrency = max(1, int(p.get('concurrency', 3)))
+        skip_inactive = bool(p.get('skip_inactive', True))
+        skip_spam = bool(p.get('skip_spam', True))
+
+        accounts_qs = Account.objects.filter(
+            id__in=account_ids, owner=self.task.owner,
+        ).select_related('device_setting')
+        if skip_inactive:
+            accounts_qs = accounts_qs.filter(is_active=True)
+        if skip_spam:
+            accounts_qs = accounts_qs.filter(is_spam=False)
+        accounts = await sync_to_async(list)(accounts_qs)
+        if not accounts:
+            await self.log('error', "Filtrga mos akkaunt topilmadi")
+            await self.update_progress(status='failed', error="No accounts",
+                                       finished_at=timezone.now())
+            return
+
+        await self.update_progress(total=len(accounts))
+        await self.log('info', f"{len(accounts)} ta akkaunt × dialog'larni o'qish")
+        sem = asyncio.Semaphore(concurrency)
+
+        async def process_account(account):
+            async with sem:
+                if await self.is_cancelled():
+                    return
+                if not account.session_string:
+                    await self.log('error', "Sessiya yo'q",
+                                   account=account, step='no_session')
+                    await self.incr_done(success=False)
+                    return
+                try:
+                    result = await mark_all_read_for_account(account, max_dialogs=max_dialogs)
+                except FloodWaitError as e:
+                    wait = int(getattr(e, 'seconds', 0) or 0)
+                    await self.log('warning', f"FloodWait {wait}s",
+                                   account=account, step='flood_wait')
+                    await self.incr_done(success=False)
+                    return
+
+                if result.get('success'):
+                    await self.log('success',
+                        f"✓ {result['read']} ta o'qildi, {result['skipped']} ta o'tkazildi",
+                        account=account, step='read_done')
+                    await self.incr_done(success=True)
+                else:
+                    await self.log('error', result.get('error'),
+                                   account=account, step='read_failed',
+                                   telegram_error=result.get('error_type', ''))
+                    await self.incr_done(success=False)
+
+        await asyncio.gather(*[process_account(a) for a in accounts], return_exceptions=True)
+
+        if await self.is_cancelled():
+            await self.update_progress(status='cancelled', finished_at=timezone.now())
+            await self.log('warning', "Vazifa bekor qilindi")
+        else:
+            await self.update_progress(status='completed', finished_at=timezone.now())
+            await self.log('success', "Vazifa yakunlandi")
+
+
+class Set2FAPasswordRunner(TaskRunner):
+    """Set or change the 2FA password on each selected account.
+
+    Params:
+      account_ids
+      new_password (str)        — required, will be applied to all accounts
+      hint (str)                — optional shared hint
+      use_db_current (bool)     — if True, current_password is read from
+                                  Account.two_fa_password (default True)
+      concurrency, skip_inactive, skip_spam
+    """
+
+    async def run(self):
+        from .services import set_2fa_password_for_account
+
+        p = self.params
+        account_ids = list(p.get('account_ids') or [])
+        new_password = (p.get('new_password') or '').strip()
+        hint = (p.get('hint') or '').strip()
+        concurrency = max(1, int(p.get('concurrency', 2)))
+        skip_inactive = bool(p.get('skip_inactive', True))
+        skip_spam = bool(p.get('skip_spam', True))
+
+        if not new_password:
+            await self.log('error', "Yangi parol bo'sh")
+            await self.update_progress(status='failed', error="Empty password",
+                                       finished_at=timezone.now())
+            return
+        if len(new_password) < 1:  # Telegram requires at least 1 char
+            await self.log('error', "Parol juda qisqa")
+            await self.update_progress(status='failed', error="Password too short",
+                                       finished_at=timezone.now())
+            return
+
+        accounts_qs = Account.objects.filter(
+            id__in=account_ids, owner=self.task.owner,
+        ).select_related('device_setting')
+        if skip_inactive:
+            accounts_qs = accounts_qs.filter(is_active=True)
+        if skip_spam:
+            accounts_qs = accounts_qs.filter(is_spam=False)
+        accounts = await sync_to_async(list)(accounts_qs)
+        if not accounts:
+            await self.log('error', "Filtrga mos akkaunt topilmadi")
+            await self.update_progress(status='failed', error="No accounts",
+                                       finished_at=timezone.now())
+            return
+
+        await self.update_progress(total=len(accounts))
+        await self.log('info', f"{len(accounts)} ta akkaunt × 2FA parol o'rnatish")
+        sem = asyncio.Semaphore(concurrency)
+
+        async def process_account(account):
+            async with sem:
+                if await self.is_cancelled():
+                    return
+                if not account.session_string:
+                    await self.log('error', "Sessiya yo'q",
+                                   account=account, step='no_session')
+                    await self.incr_done(success=False)
+                    return
+                try:
+                    result = await set_2fa_password_for_account(
+                        account, new_password=new_password, hint=hint,
+                    )
+                except FloodWaitError as e:
+                    wait = int(getattr(e, 'seconds', 0) or 0)
+                    await self.log('warning', f"FloodWait {wait}s",
+                                   account=account, step='flood_wait')
+                    await self.incr_done(success=False)
+                    return
+
+                if result['success']:
+                    await self.log('success',
+                        "✓ 2FA parol o'rnatildi",
+                        account=account, step='2fa_set')
+                    await self.incr_done(success=True)
+                else:
+                    await self.log('error', result['error'],
+                                   account=account, step='2fa_failed',
+                                   telegram_error=result.get('error_type', ''))
+                    await self.incr_done(success=False)
+
+        await asyncio.gather(*[process_account(a) for a in accounts], return_exceptions=True)
+
+        if await self.is_cancelled():
+            await self.update_progress(status='cancelled', finished_at=timezone.now())
+            await self.log('warning', "Vazifa bekor qilindi")
+        else:
+            await self.update_progress(status='completed', finished_at=timezone.now())
+            await self.log('success', "Vazifa yakunlandi")
+
+
 RUNNERS = {
     'create_groups': CreateGroupsRunner,
     'create_channels': CreateChannelsRunner,
     'join_channel': JoinChannelRunner,
     'leave_groups': LeaveChatsRunner,
     'leave_channels': LeaveChatsRunner,
+    'send_message': SendMessageRunner,
+    'update_profile': UpdateProfileRunner,
+    'view_stories': ViewStoriesRunner,
+    'mark_all_read': MarkAllReadRunner,
+    'set_2fa_password': Set2FAPasswordRunner,
     'boost_views': BoostViewsRunner,
     'react_to_post': ReactToPostRunner,
     'vote_poll': VotePollRunner,

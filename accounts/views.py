@@ -195,6 +195,8 @@ async def dashboard(request):
 
         if action in ('create_groups', 'create_channels', 'join_channel',
                       'leave_groups', 'leave_channels',
+                      'send_message', 'update_profile', 'view_stories',
+                      'mark_all_read', 'set_2fa_password',
                       'boost_views', 'react_to_post', 'vote_poll',
                       'press_start', 'run_script', 'account_warming'):
             from urllib.parse import urlencode
@@ -202,17 +204,22 @@ async def dashboard(request):
             # run_script is admin-only; let the jobs view itself reject if not.
             qs = urlencode([('account_ids', i) for i in selected_ids])
             url_map = {
-                'create_groups':  'jobs:task_create_groups',
-                'create_channels': 'jobs:task_create_channels',
-                'join_channel':    'jobs:task_create_join_channel',
-                'leave_groups':    'jobs:task_create_leave_groups',
-                'leave_channels':  'jobs:task_create_leave_channels',
-                'boost_views':     'jobs:task_create_boost_views',
-                'react_to_post':   'jobs:task_create_react_to_post',
-                'vote_poll':       'jobs:task_create_vote_poll',
-                'press_start':     'jobs:task_create_press_start',
-                'run_script':      'jobs:task_create_run_script',
-                'account_warming': 'jobs:task_create_account_warming',
+                'create_groups':    'jobs:task_create_groups',
+                'create_channels':  'jobs:task_create_channels',
+                'join_channel':     'jobs:task_create_join_channel',
+                'leave_groups':     'jobs:task_create_leave_groups',
+                'leave_channels':   'jobs:task_create_leave_channels',
+                'send_message':     'jobs:task_create_send_message',
+                'update_profile':   'jobs:task_create_update_profile',
+                'view_stories':     'jobs:task_create_view_stories',
+                'mark_all_read':    'jobs:task_create_mark_all_read',
+                'set_2fa_password': 'jobs:task_create_set_2fa_password',
+                'boost_views':      'jobs:task_create_boost_views',
+                'react_to_post':    'jobs:task_create_react_to_post',
+                'vote_poll':        'jobs:task_create_vote_poll',
+                'press_start':      'jobs:task_create_press_start',
+                'run_script':       'jobs:task_create_run_script',
+                'account_warming':  'jobs:task_create_account_warming',
             }
             return redirect(f"{reverse(url_map[action])}?{qs}")
 
@@ -269,10 +276,46 @@ def _get_device_by_pk(pk):
         return None
 
 
+# Session keys used by the multi-step Telethon login (initiate → verify).
+# Centralized so cancel_login + initiate can wipe the same set without drift.
+_LOGIN_SESSION_KEYS = (
+    'phone_number',
+    'phone_code_hash',
+    'temp_session_string',
+    'needs_password',
+    'device_setting_id',
+    'account_api_id',
+    'account_api_hash',
+    'relogin_pk',
+)
+
+
+async def cancel_login(request):
+    """Wipe an in-progress Telethon login (e.g., stuck on the 2FA password
+    prompt for a phone number that's been blocked) so the user can start
+    fresh with a different phone."""
+    user = await _require_login(request)
+    if user is None:
+        return redirect(f"{settings.LOGIN_URL}?next={request.path}")
+    for key in _LOGIN_SESSION_KEYS:
+        request.session.pop(key, None)
+    await sync_to_async(request.session.save)()
+    messages.info(request, "Login sessiyasi bekor qilindi. Yangi akkaunt qo'shishingiz mumkin.")
+    return redirect('accounts:add_account')
+
+
 async def initiate_telethon_login(request):
     user = await _require_login(request)
     if user is None:
         return redirect(f"{settings.LOGIN_URL}?next={request.path}")
+
+    # Defensive: any stale state from a previous (abandoned) login flow is
+    # wiped on every visit to the form. Without this, `needs_password=True`
+    # from a blocked-phone attempt survives and shows the wrong UI.
+    if request.method == "GET":
+        for key in _LOGIN_SESSION_KEYS:
+            request.session.pop(key, None)
+        await sync_to_async(request.session.save)()
 
     device_settings = await _get_device_settings()
 

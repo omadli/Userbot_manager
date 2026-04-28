@@ -1026,3 +1026,372 @@ async def leave_non_admin_chats_for_account(
             await client.disconnect()
         except Exception:
             pass
+
+
+# ---------------------------------------------------------------------------
+# Action: send_message — broadcast a message from an account to a target.
+# ---------------------------------------------------------------------------
+
+async def send_message_for_account(account, target, text):
+    """Send `text` to a single chat/user (`target` parsed via parse_target).
+
+    Returns the standard {success, error, error_type, stop_account} dict.
+    """
+    kind, payload, original = parse_target(target)
+    if kind == 'unknown':
+        return {
+            'success': False, 'error': f"Noto'g'ri target: {original!r}",
+            'error_type': 'InvalidTarget', 'stop_account': False,
+        }
+
+    try:
+        client = await get_client_for_account(account)
+    except Exception as e:
+        return {'success': False, 'error': f"Ulanib bo'lmadi: {e}",
+                'error_type': type(e).__name__, 'stop_account': False}
+    try:
+        me = await client.get_me()
+        if not me:
+            await _mark_session_dead(account.pk)
+            return {'success': False, 'error': "Sessiya yaroqsiz",
+                    'error_type': 'NoMe', 'stop_account': True}
+
+        if kind == 'private_link':
+            return {
+                'success': False,
+                'error': "Maxfiy invite link uchun avval join_channel ishlating",
+                'error_type': 'PrivateInviteUnsupported',
+                'stop_account': False,
+            }
+
+        entity = await client.get_entity(payload)
+        await client.send_message(entity, (text or '')[:4096])
+        return {'success': True, 'error': '', 'error_type': '', 'stop_account': False}
+
+    except FloodWaitError:
+        raise
+    except SESSION_DEAD_EXCEPTIONS as e:
+        await _mark_session_dead(account.pk)
+        return {'success': False, 'error': "Sessiya chiqarib yuborilgan",
+                'error_type': type(e).__name__, 'stop_account': True}
+    except ACCOUNT_BANNED_EXCEPTIONS as e:
+        await _mark_account_banned(account.pk)
+        return {'success': False, 'error': "Akkaunt bloklangan",
+                'error_type': type(e).__name__, 'stop_account': True}
+    except (ChannelPrivateError, UsernameNotOccupiedError, UsernameInvalidError) as e:
+        return {'success': False, 'error': "Target topilmadi yoki yopiq",
+                'error_type': type(e).__name__, 'stop_account': False}
+    except Exception as e:
+        return {'success': False, 'error': str(e)[:200],
+                'error_type': type(e).__name__, 'stop_account': False}
+    finally:
+        try:
+            await client.disconnect()
+        except Exception:
+            pass
+
+
+# ---------------------------------------------------------------------------
+# Action: update_profile — set first_name, last_name, bio, username.
+# ---------------------------------------------------------------------------
+
+async def update_profile_for_account(account, *,
+                                     first_name=None, last_name=None,
+                                     about=None, username=None):
+    """Update the account's Telegram profile.
+
+    Any field passed as None is left unchanged. `username` set to '' clears
+    the username. On username conflict (taken/invalid) we still report the
+    profile fields as success but include a `username_status` flag.
+    """
+    from telethon.tl.functions.account import (
+        UpdateProfileRequest, UpdateUsernameRequest,
+    )
+    from telethon.errors import UsernameOccupiedError
+    try:
+        from telethon.errors import UsernameInvalidError as _UNI
+    except ImportError:
+        _UNI = Exception  # fallback if rename happens upstream
+
+    try:
+        client = await get_client_for_account(account)
+    except Exception as e:
+        return {'success': False, 'error': f"Ulanib bo'lmadi: {e}",
+                'error_type': type(e).__name__, 'stop_account': False}
+    try:
+        me = await client.get_me()
+        if not me:
+            await _mark_session_dead(account.pk)
+            return {'success': False, 'error': "Sessiya yaroqsiz",
+                    'error_type': 'NoMe', 'stop_account': True}
+
+        if first_name is not None or last_name is not None or about is not None:
+            kwargs = {}
+            if first_name is not None:
+                kwargs['first_name'] = (first_name or '')[:64]
+            if last_name is not None:
+                kwargs['last_name'] = (last_name or '')[:64]
+            if about is not None:
+                kwargs['about'] = (about or '')[:140]
+            await client(UpdateProfileRequest(**kwargs))
+
+        username_status = 'unchanged'
+        if username is not None:
+            try:
+                await client(UpdateUsernameRequest(username=username))
+                username_status = 'set' if username else 'cleared'
+            except UsernameOccupiedError:
+                username_status = 'occupied'
+            except _UNI:
+                username_status = 'invalid'
+
+        try:
+            updates = {}
+            if first_name is not None:
+                updates['first_name'] = first_name
+            if last_name is not None:
+                updates['last_name'] = last_name
+            if username is not None and username_status == 'set':
+                updates['username'] = username
+            if updates:
+                await Account.objects.filter(pk=account.pk).aupdate(**updates)
+        except Exception:
+            pass
+
+        return {'success': True, 'error': '', 'error_type': '',
+                'username_status': username_status, 'stop_account': False}
+
+    except FloodWaitError:
+        raise
+    except SESSION_DEAD_EXCEPTIONS as e:
+        await _mark_session_dead(account.pk)
+        return {'success': False, 'error': "Sessiya chiqarib yuborilgan",
+                'error_type': type(e).__name__, 'stop_account': True}
+    except ACCOUNT_BANNED_EXCEPTIONS as e:
+        await _mark_account_banned(account.pk)
+        return {'success': False, 'error': "Akkaunt bloklangan",
+                'error_type': type(e).__name__, 'stop_account': True}
+    except Exception as e:
+        return {'success': False, 'error': str(e)[:200],
+                'error_type': type(e).__name__, 'stop_account': False}
+    finally:
+        try:
+            await client.disconnect()
+        except Exception:
+            pass
+
+
+# ---------------------------------------------------------------------------
+# Action: view_stories — read stories from subscribed peers, optionally react.
+# ---------------------------------------------------------------------------
+
+async def view_and_react_stories_for_account(account, *,
+                                             react_chance=0.0,
+                                             max_peers=50,
+                                             reactions=None):
+    """Mark stories from subscribed peers as seen, optionally react with a
+    random emoji from `reactions` (default: like/heart/fire).
+    """
+    from telethon.tl.functions.stories import (
+        GetAllStoriesRequest, ReadStoriesRequest,
+        SendReactionRequest as StoriesSendReactionRequest,
+    )
+
+    if reactions is None:
+        reactions = ['👍', '❤️', '🔥']
+    rng = random.SystemRandom()
+
+    try:
+        client = await get_client_for_account(account)
+    except Exception as e:
+        return {'success': False, 'error': f"Ulanib bo'lmadi: {e}",
+                'error_type': type(e).__name__, 'stop_account': False}
+    try:
+        me = await client.get_me()
+        if not me:
+            await _mark_session_dead(account.pk)
+            return {'success': False, 'error': "Sessiya yaroqsiz",
+                    'error_type': 'NoMe', 'stop_account': True}
+
+        peers_seen = stories_seen = reactions_sent = errors = 0
+
+        try:
+            res = await client(GetAllStoriesRequest(include_hidden=False))
+        except Exception as e:
+            return {'success': False, 'error': f"Stories olinmadi: {e}",
+                    'error_type': type(e).__name__, 'stop_account': False}
+
+        peer_stories = getattr(res, 'peer_stories', None) or []
+        for ps in peer_stories[:max_peers]:
+            peers_seen += 1
+            stories = getattr(ps, 'stories', None) or []
+            ids = [getattr(s, 'id', None) for s in stories if getattr(s, 'id', None) is not None]
+            if not ids:
+                continue
+            try:
+                await client(ReadStoriesRequest(peer=ps.peer, max_id=max(ids)))
+                stories_seen += len(ids)
+            except FloodWaitError:
+                raise
+            except Exception:
+                errors += 1
+                continue
+
+            if react_chance > 0:
+                for sid in ids:
+                    if rng.random() >= react_chance:
+                        continue
+                    emoji = rng.choice(reactions)
+                    try:
+                        await client(StoriesSendReactionRequest(
+                            peer=ps.peer, story_id=sid,
+                            reaction=ReactionEmoji(emoticon=emoji),
+                        ))
+                        reactions_sent += 1
+                        await asyncio.sleep(rng.uniform(0.5, 2.0))
+                    except FloodWaitError:
+                        raise
+                    except Exception:
+                        errors += 1
+
+            await asyncio.sleep(rng.uniform(0.3, 1.0))
+
+        return {
+            'success': True, 'error': '', 'error_type': '', 'stop_account': False,
+            'peers_seen': peers_seen, 'stories_seen': stories_seen,
+            'reactions_sent': reactions_sent, 'errors': errors,
+        }
+
+    except FloodWaitError:
+        raise
+    except SESSION_DEAD_EXCEPTIONS as e:
+        await _mark_session_dead(account.pk)
+        return {'success': False, 'error': "Sessiya chiqarib yuborilgan",
+                'error_type': type(e).__name__, 'stop_account': True}
+    except Exception as e:
+        return {'success': False, 'error': str(e)[:200],
+                'error_type': type(e).__name__, 'stop_account': False}
+    finally:
+        try:
+            await client.disconnect()
+        except Exception:
+            pass
+
+
+# ---------------------------------------------------------------------------
+# Action: mark_all_read — flush every unread dialog.
+# ---------------------------------------------------------------------------
+
+async def mark_all_read_for_account(account, *, max_dialogs=500):
+    """Iterate dialogs and read every unread one. Returns counts."""
+    try:
+        client = await get_client_for_account(account)
+    except Exception as e:
+        return {'success': False, 'error': f"Ulanib bo'lmadi: {e}",
+                'error_type': type(e).__name__, 'stop_account': False}
+    try:
+        me = await client.get_me()
+        if not me:
+            await _mark_session_dead(account.pk)
+            return {'success': False, 'error': "Sessiya yaroqsiz",
+                    'error_type': 'NoMe', 'stop_account': True}
+
+        read = skipped = 0
+        n = 0
+        async for dialog in client.iter_dialogs():
+            n += 1
+            if n > max_dialogs:
+                break
+            if not getattr(dialog, 'unread_count', 0):
+                skipped += 1
+                continue
+            try:
+                await client.send_read_acknowledge(dialog)
+                read += 1
+                await asyncio.sleep(random.uniform(0.1, 0.4))
+            except FloodWaitError:
+                raise
+            except Exception:
+                skipped += 1
+
+        return {'success': True, 'error': '', 'error_type': '', 'stop_account': False,
+                'read': read, 'skipped': skipped}
+
+    except FloodWaitError:
+        raise
+    except SESSION_DEAD_EXCEPTIONS as e:
+        await _mark_session_dead(account.pk)
+        return {'success': False, 'error': "Sessiya chiqarib yuborilgan",
+                'error_type': type(e).__name__, 'stop_account': True}
+    except Exception as e:
+        return {'success': False, 'error': str(e)[:200],
+                'error_type': type(e).__name__, 'stop_account': False}
+    finally:
+        try:
+            await client.disconnect()
+        except Exception:
+            pass
+
+
+# ---------------------------------------------------------------------------
+# Action: set_2fa_password — set or change the cloud (2FA) password.
+# ---------------------------------------------------------------------------
+
+async def set_2fa_password_for_account(account, *,
+                                       new_password,
+                                       hint='',
+                                       current_password=None):
+    """Set or change the account's 2FA cloud password.
+
+    `current_password` is required when the account already has one set.
+    If omitted, we try the value stored in Account.two_fa_password
+    (auto-decrypted by EncryptedTextField). On success, we mirror the
+    new password back to the same column.
+    """
+    if current_password is None:
+        rec = await Account.objects.filter(pk=account.pk).afirst()
+        current_password = rec.two_fa_password if rec else None
+
+    try:
+        client = await get_client_for_account(account)
+    except Exception as e:
+        return {'success': False, 'error': f"Ulanib bo'lmadi: {e}",
+                'error_type': type(e).__name__, 'stop_account': False}
+    try:
+        me = await client.get_me()
+        if not me:
+            await _mark_session_dead(account.pk)
+            return {'success': False, 'error': "Sessiya yaroqsiz",
+                    'error_type': 'NoMe', 'stop_account': True}
+
+        await client.edit_2fa(
+            current_password=current_password or None,
+            new_password=new_password,
+            hint=hint or '',
+        )
+
+        # Persist new password (Fernet-encrypted on save)
+        try:
+            obj = await Account.objects.filter(pk=account.pk).afirst()
+            if obj:
+                obj.two_fa_password = new_password
+                await obj.asave(update_fields=['two_fa_password'])
+        except Exception:
+            pass
+
+        return {'success': True, 'error': '', 'error_type': '', 'stop_account': False}
+
+    except FloodWaitError:
+        raise
+    except SESSION_DEAD_EXCEPTIONS as e:
+        await _mark_session_dead(account.pk)
+        return {'success': False, 'error': "Sessiya chiqarib yuborilgan",
+                'error_type': type(e).__name__, 'stop_account': True}
+    except Exception as e:
+        return {'success': False, 'error': str(e)[:200],
+                'error_type': type(e).__name__, 'stop_account': False}
+    finally:
+        try:
+            await client.disconnect()
+        except Exception:
+            pass

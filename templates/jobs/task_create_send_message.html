@@ -1,0 +1,64 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex align-items-center mb-4 flex-wrap gap-2">
+    <a href="{% url 'accounts:dashboard' %}" class="text-muted text-decoration-none small me-3">
+        <i class="bi bi-arrow-left me-1"></i>Akkauntlar
+    </a>
+    <h2 class="fw-bold mb-0"><i class="bi bi-send text-primary me-2"></i>Xabar yuborish</h2>
+</div>
+
+<form method="post" action="{% url 'jobs:task_create_send_message' %}" class="row g-3">
+    {% csrf_token %}
+    {% for aid in account_ids %}<input type="hidden" name="account_ids" value="{{ aid }}">{% endfor %}
+
+    <div class="col-lg-8">
+        <div class="card shadow-sm mb-3">
+            <div class="card-header bg-white border-bottom py-3"><span class="fw-bold"><i class="bi bi-people me-2"></i>Targetlar</span> <small class="text-muted ms-2">har qatorga bitta</small></div>
+            <div class="card-body">
+                <textarea name="targets" rows="6" required class="form-control font-monospace"
+                          placeholder="@username&#10;https://t.me/username&#10;phone:+998..."></textarea>
+                <small class="text-muted">@username, t.me/username, public chat link. Maxfiy invite link uchun avval join_channel kerak.</small>
+            </div>
+        </div>
+
+        <div class="card shadow-sm mb-3">
+            <div class="card-header bg-white border-bottom py-3"><span class="fw-bold"><i class="bi bi-chat-text me-2"></i>Xabar</span></div>
+            <div class="card-body">
+                <textarea name="message" rows="6" required maxlength="4096" class="form-control"
+                          placeholder="Salom!&#10;Bu sizga maxsus taklif..."></textarea>
+                <small class="text-muted">Maks 4096 belgi. Markdown formati Telegram tomonidan o'qiladi.</small>
+            </div>
+        </div>
+
+        <div class="card shadow-sm mb-3">
+            <div class="card-header bg-white border-bottom py-3"><span class="fw-bold"><i class="bi bi-sliders me-2"></i>Parametrlar</span></div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-3"><label class="form-label small fw-bold text-uppercase text-muted">Min pauza (s)</label><input type="number" name="delay_min_sec" value="30" min="0" step="0.5" class="form-control rounded-pill bg-light border-0"></div>
+                    <div class="col-md-3"><label class="form-label small fw-bold text-uppercase text-muted">Max pauza (s)</label><input type="number" name="delay_max_sec" value="90" min="0" step="0.5" class="form-control rounded-pill bg-light border-0"></div>
+                    <div class="col-md-3"><label class="form-label small fw-bold text-uppercase text-muted">Parallel</label><input type="number" name="concurrency" value="3" min="1" max="20" class="form-control rounded-pill bg-light border-0"></div>
+                    <div class="col-md-3"><label class="form-label small fw-bold text-uppercase text-muted">Min yosh (daq)</label><input type="number" name="min_account_age_minutes" value="0" min="0" class="form-control rounded-pill bg-light border-0"></div>
+                    <div class="col-md-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="skip_inactive" checked id="si"><label class="form-check-label" for="si">Nofaol akkauntlar — skip</label></div></div>
+                    <div class="col-md-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="skip_spam" checked id="ss"><label class="form-check-label" for="ss">Spam akkauntlar — skip</label></div></div>
+                </div>
+            </div>
+        </div>
+
+        {% include 'jobs/_schedule_block.html' %}
+
+        <button class="btn btn-gradient btn-lg rounded-pill px-5 fw-bold shadow-sm"><i class="bi bi-send me-2"></i>Yuborishni boshlash</button>
+        <a href="{% url 'accounts:dashboard' %}" class="btn btn-light rounded-pill px-4 ms-2">Bekor</a>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white border-bottom py-3"><span class="fw-bold"><i class="bi bi-people me-2"></i>Akkauntlar</span> <span class="badge bg-primary bg-opacity-10 text-primary border ms-2">{{ accounts|length }}</span></div>
+            <div class="card-body p-0">
+                <ul class="list-group list-group-flush">
+                    {% for a in accounts %}<li class="list-group-item py-2 px-3 small">{{ a.first_name|default:a.phone_number }}{% if a.username %} <span class="text-muted">@{{ a.username }}</span>{% endif %}</li>{% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+</form>
+{% endblock %}
