@@ -54,6 +54,12 @@ jobs:
             git fetch --quiet origin
             git reset --hard origin/main
 
+            # The bind-mounted ./logs dir must be writable by the container's
+            # `app` user (UID 1000). On a fresh server Docker creates it as
+            # root and Django crashes opening logs/error.log. Idempotent.
+            mkdir -p logs
+            sudo chown -R 1000:1000 logs
+
             echo "===> [2/5] Upserting secrets in .env (other keys preserved)"
             python3 - <<'PY'
             import os, re, pathlib
