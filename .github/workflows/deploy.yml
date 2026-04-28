@@ -25,19 +25,26 @@ jobs:
           DB_ENCRYPTION_KEY: ${{ secrets.DB_ENCRYPTION_KEY }}
           API_ID: ${{ secrets.API_ID }}
           API_HASH: ${{ secrets.API_HASH }}
+          GIT_REPO: https://github.com/${{ github.repository }}.git
         with:
           host: ${{ secrets.SERVER_IP }}
           username: ${{ vars.SERVER_USER || 'ubuntu' }}
           port: ${{ vars.SERVER_PORT || 22 }}
           key: ${{ secrets.SSH_KEY }}
-          envs: SECRET_KEY,DB_ENCRYPTION_KEY,API_ID,API_HASH
+          envs: SECRET_KEY,DB_ENCRYPTION_KEY,API_ID,API_HASH,GIT_REPO
           command_timeout: 12m
           script_stop: true
           script: |
             set -euo pipefail
 
             APP_DIR="${APP_DIR:-$HOME/apps/userbot-manager}"
-            echo "===> [1/5] Pulling latest code into $APP_DIR"
+
+            echo "===> [1/5] Sync code into $APP_DIR"
+            if [ ! -d "$APP_DIR/.git" ]; then
+                echo "  $APP_DIR not present yet — bootstrap clone from $GIT_REPO"
+                mkdir -p "$(dirname "$APP_DIR")"
+                git clone "$GIT_REPO" "$APP_DIR"
+            fi
             cd "$APP_DIR"
             git fetch --quiet origin
             git reset --hard origin/main
