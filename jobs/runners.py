@@ -173,6 +173,9 @@ class CreateGroupsRunner(TaskRunner):
         skip_inactive = bool(p.get('skip_inactive', True))
         skip_spam = bool(p.get('skip_spam', True))
         megagroup = bool(p.get('megagroup', self._default_megagroup))
+        # Default ON: empty groups look automated, so post a tiny greeting
+        # right after creation. Toggle off via the form to skip.
+        send_welcome = bool(p.get('send_welcome_message', True))
 
         if delay_max < delay_min:
             delay_max = delay_min
@@ -286,7 +289,7 @@ class CreateGroupsRunner(TaskRunner):
                                        account=account, step='cancelled')
                         return
 
-                    await self._create_one(account, title, name_pk, idx, len(titles), megagroup)
+                    await self._create_one(account, title, name_pk, idx, len(titles), megagroup, send_welcome)
 
                     # Inter-operation pause (not after the last one).
                     if idx < len(titles):
@@ -313,7 +316,7 @@ class CreateGroupsRunner(TaskRunner):
             await self.update_progress(status='completed', finished_at=timezone.now())
             await self.log('success', "Vazifa yakunlandi")
 
-    async def _create_one(self, account, title, name_pk, idx, total, megagroup):
+    async def _create_one(self, account, title, name_pk, idx, total, megagroup, send_welcome=True):
         """Create one group, with FloodWait retry. Writes events + increments counters."""
         if not await self.quota_ok(account):
             await self.incr_done(success=False)
@@ -325,7 +328,11 @@ class CreateGroupsRunner(TaskRunner):
                 account=account, step='creating',
             )
             try:
-                result = await create_group_for_account(account, title, megagroup=megagroup)
+                from .welcome import pick_welcome_message
+                welcome = pick_welcome_message() if send_welcome else None
+                result = await create_group_for_account(
+                    account, title, megagroup=megagroup, welcome_message=welcome,
+                )
             except FloodWaitError as e:
                 wait = int(getattr(e, 'seconds', 0) or 0)
                 if wait > FLOOD_HARD_CAP or flood_retries >= MAX_FLOOD_RETRIES:
@@ -362,11 +369,14 @@ class CreateGroupsRunner(TaskRunner):
                         account=account, step='db_save_error',
                     )
                 await RandomName.objects.filter(pk=name_pk).aupdate(used_count=F('used_count') + 1)
-                await self.log(
-                    'success',
-                    f"✓ '{title}' yaratildi" + (f" → {result['invite_link']}" if result.get('invite_link') else ""),
-                    account=account, step='created',
-                )
+                msg = f"✓ '{title}' yaratildi"
+                if result.get('invite_link'):
+                    msg += f" → {result['invite_link']}"
+                if result.get('welcome_sent'):
+                    msg += " · welcome xabar yuborildi"
+                elif send_welcome:
+                    msg += " · welcome yuborilmadi"
+                await self.log('success', msg, account=account, step='created')
                 await self.incr_done(success=True)
                 return
 

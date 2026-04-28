@@ -5,6 +5,7 @@ app_name = 'accounts'
 
 urlpatterns = [
     path('', views.dashboard, name='dashboard'),
+    path('profile/', views.profile, name='profile'),
     path('add/', views.initiate_telethon_login, name='add_account'),
     path('verify/', views.verify_telethon_login, name='verify_login'),
     path('relogin/<int:pk>/', views.relogin_account, name='relogin_account'),

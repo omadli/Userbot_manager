@@ -62,6 +62,14 @@ ALLOWED_HOSTS = _env_list('ALLOWED_HOSTS', default=['localhost', '127.0.0.1'])
 # Application definition
 
 INSTALLED_APPS = [
+    # Unfold MUST come before django.contrib.admin so its templates win.
+    # `unfold.contrib.import_export` rewires the import-export form widgets
+    # to match the dashboard's look — drop it if you remove that integration.
+    'unfold',
+    'unfold.contrib.filters',
+    'unfold.contrib.forms',
+    'unfold.contrib.import_export',
+
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -84,6 +92,73 @@ INSTALLED_APPS = [
 
 CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
 CRISPY_TEMPLATE_PACK = "bootstrap5"
+
+
+# ---------------------------------------------------------------------------
+# Unfold admin theme
+# https://unfoldadmin.com/docs/configuration/settings/
+# ---------------------------------------------------------------------------
+
+UNFOLD = {
+    "SITE_TITLE": "Userbot Manager — Admin",
+    "SITE_HEADER": "Userbot Manager",
+    "SITE_SUBHEADER": "Multi-tenant Telegram boshqaruvi",
+    "SITE_URL": "/",
+    "SITE_SYMBOL": "rocket_launch",
+    "SHOW_HISTORY": True,
+    "SHOW_VIEW_ON_SITE": True,
+    "THEME": None,  # respect the user's OS preference (light/dark)
+    "COLORS": {
+        "primary": {
+            "50": "240 249 255", "100": "224 242 254", "200": "186 230 253",
+            "300": "125 211 252", "400": "56 189 248", "500": "14 165 233",
+            "600": "2 132 199", "700": "3 105 161", "800": "7 89 133",
+            "900": "12 74 110", "950": "8 47 73",
+        },
+    },
+    "SIDEBAR": {
+        "show_search": True,
+        "show_all_applications": False,
+        "navigation": [
+            {
+                "title": "Akkauntlar",
+                "separator": True,
+                "items": [
+                    {"title": "Akkauntlar", "icon": "person", "link": "/admin/accounts/account/"},
+                    {"title": "Tag'lar", "icon": "label", "link": "/admin/accounts/tag/"},
+                    {"title": "Proxy'lar", "icon": "vpn_key", "link": "/admin/accounts/proxy/"},
+                    {"title": "Device sozlamalari", "icon": "devices", "link": "/admin/accounts/devicesetting/"},
+                ],
+            },
+            {
+                "title": "Telegram obyektlari",
+                "separator": True,
+                "items": [
+                    {"title": "Guruhlar", "icon": "group", "link": "/admin/groups/group/"},
+                    {"title": "Kanallar", "icon": "campaign", "link": "/admin/channels/channel/"},
+                ],
+            },
+            {
+                "title": "Vazifalar",
+                "separator": True,
+                "items": [
+                    {"title": "Tasks", "icon": "task", "link": "/admin/jobs/task/"},
+                    {"title": "Hodisalar", "icon": "history", "link": "/admin/jobs/taskevent/"},
+                    {"title": "Nom pool'lari", "icon": "collections_bookmark", "link": "/admin/jobs/namepool/"},
+                    {"title": "Skript shabloni", "icon": "code", "link": "/admin/jobs/scripttemplate/"},
+                ],
+            },
+            {
+                "title": "Foydalanuvchilar",
+                "separator": True,
+                "items": [
+                    {"title": "User'lar", "icon": "manage_accounts", "link": "/admin/auth/user/"},
+                    {"title": "Group'lar (auth)", "icon": "groups", "link": "/admin/auth/group/"},
+                ],
+            },
+        ],
+    },
+}
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',

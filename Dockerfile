@@ -60,9 +60,17 @@ RUN pip install --no-index --find-links=/wheels -r requirements.txt && rm -rf /w
 # Source last so unrelated code changes don't bust the dep-install layer.
 COPY --chown=app:app . .
 
-# Permanent dirs that need to be writable at runtime.
-RUN mkdir -p /app/media /app/staticfiles /app/data \
-    && chown -R app:app /app/media /app/staticfiles /app/data
+# Bulletproof entrypoint:
+#   - sed strips CRLF — when the repo is checked out on Windows with
+#     core.autocrlf=true, the shebang reads as `#!/bin/sh\r` and the kernel
+#     fails to find the interpreter (surfaces as exit 126 from tini).
+#   - chmod +x — NTFS doesn't preserve the POSIX exec bit through Docker COPY.
+# Both are safe no-ops when the file is already correct.
+# Same RUN also creates the runtime dirs (incl. /app/logs for the new LOGGING).
+RUN sed -i 's/\r$//' /app/entrypoint.sh \
+    && chmod +x /app/entrypoint.sh \
+    && mkdir -p /app/media /app/staticfiles /app/data /app/logs \
+    && chown -R app:app /app/media /app/staticfiles /app/data /app/logs
 
 USER app
 

@@ -479,6 +479,7 @@ async def task_create_groups(request):
         megagroup = request.POST.get('megagroup') == 'on'
         skip_inactive = request.POST.get('skip_inactive') == 'on'
         skip_spam = request.POST.get('skip_spam') == 'on'
+        send_welcome = request.POST.get('send_welcome_message') == 'on'
 
         params = {
             'account_ids': account_ids,
@@ -491,6 +492,7 @@ async def task_create_groups(request):
             'skip_inactive': skip_inactive,
             'skip_spam': skip_spam,
             'megagroup': megagroup,
+            'send_welcome_message': send_welcome,
         }
         task = await Task.objects.acreate(
             kind='create_groups',
@@ -574,6 +576,7 @@ async def task_create_channels(request):
 
         skip_inactive = request.POST.get('skip_inactive') == 'on'
         skip_spam = request.POST.get('skip_spam') == 'on'
+        send_welcome = request.POST.get('send_welcome_message') == 'on'
 
         params = {
             'account_ids': account_ids,
@@ -585,6 +588,7 @@ async def task_create_channels(request):
             'min_account_age_minutes': min_age,
             'skip_inactive': skip_inactive,
             'skip_spam': skip_spam,
+            'send_welcome_message': send_welcome,
             # Runner forces this anyway, but pin it in params for auditability.
             'megagroup': False,
         }

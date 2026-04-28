@@ -1,0 +1,15 @@
+# Force LF line endings for files that Linux containers / CI must execute.
+# Without this, a Windows checkout with core.autocrlf=true produces CRLF
+# shebangs and shell scripts fail to start (exit 126 from tini in Docker).
+
+*.sh             text eol=lf
+entrypoint.sh    text eol=lf
+
+Dockerfile       text eol=lf
+.dockerignore    text eol=lf
+
+*.yml            text eol=lf
+*.yaml           text eol=lf
+
+# Python source — LF for cross-platform consistency.
+*.py             text eol=lf

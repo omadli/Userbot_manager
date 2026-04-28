@@ -9,6 +9,7 @@ Django==6.0.4
 django-crispy-forms==2.6
 django-filter==25.2
 django-import-export==4.4.0
+django-unfold==0.91.0
 phonenumbers==9.0.27
 pyaes==1.6.1
 pyasn1==0.6.3

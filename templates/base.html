@@ -148,12 +148,16 @@
 
     
     <div class="p-3 border-top mx-3 mb-3 mt-4">
-        <div class="d-flex align-items-center mb-3">
+        <a href="{% url 'accounts:profile' %}" class="d-flex align-items-center mb-3 text-decoration-none text-reset
+                  {% if request.resolver_match.url_name == 'profile' %}fw-bold{% endif %}">
             <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center fw-bold" style="width: 35px; height: 35px;">
                 {{ user.username|make_list|first|upper }}
             </div>
-            <strong class="ms-2">{{ user.username }}</strong>
-        </div>
+            <div class="ms-2">
+                <div class="fw-bold">{{ user.username }}</div>
+                <small class="text-muted">Profil</small>
+            </div>
+        </a>
         <form action="{% url 'logout' %}" method="post" class="m-0">
              {% csrf_token %}
              <button type="submit" class="btn btn-light w-100 text-danger fw-bold border shadow-sm rounded-pill">

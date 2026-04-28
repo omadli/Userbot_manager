@@ -19,6 +19,84 @@ import os
 from django.conf import settings
 
 
+@sync_to_async
+def _save_user_profile(user, post):
+    """Apply username/name/email changes (sync — touches User model)."""
+    from django.contrib.auth.models import User as DjangoUser
+    new_username = (post.get('username') or '').strip()
+    new_email = (post.get('email') or '').strip()
+    new_first = (post.get('first_name') or '').strip()
+    new_last = (post.get('last_name') or '').strip()
+
+    if not new_username:
+        return False, "Username bo'sh bo'lmasin"
+    if new_username != user.username:
+        if DjangoUser.objects.filter(username=new_username).exclude(pk=user.pk).exists():
+            return False, f"'{new_username}' allaqachon band"
+        user.username = new_username
+    user.email = new_email
+    user.first_name = new_first[:150]
+    user.last_name = new_last[:150]
+    user.save()
+    return True, None
+
+
+@sync_to_async
+def _change_user_password(user, old, new1, new2):
+    """Validate + persist a password change. Returns (ok, message)."""
+    from django.contrib.auth.password_validation import validate_password
+    from django.core.exceptions import ValidationError
+
+    if not user.check_password(old):
+        return False, "Hozirgi parol noto'g'ri"
+    if new1 != new2:
+        return False, "Yangi parollar mos kelmaydi"
+    try:
+        validate_password(new1, user=user)
+    except ValidationError as e:
+        return False, " ".join(e.messages)
+    user.set_password(new1)
+    user.save()
+    return True, None
+
+
+async def profile(request):
+    """Self-service profile editor: username, names, email, password."""
+    user = await _require_login(request)
+    if user is None:
+        return redirect(f"{settings.LOGIN_URL}?next={request.path}")
+
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        if action == 'update_profile':
+            ok, err = await _save_user_profile(user, request.POST)
+            if ok:
+                messages.success(request, "Profil ma'lumotlari yangilandi")
+            else:
+                messages.error(request, err)
+        elif action == 'change_password':
+            ok, err = await _change_user_password(
+                user,
+                request.POST.get('old_password', ''),
+                request.POST.get('new_password1', ''),
+                request.POST.get('new_password2', ''),
+            )
+            if ok:
+                messages.success(
+                    request,
+                    "Parol o'zgartirildi — yangi sessiya uchun qayta kiring",
+                )
+                # Force re-login: drop the session
+                from django.contrib.auth import alogout
+                await alogout(request)
+                return redirect('login')
+            else:
+                messages.error(request, err)
+        return redirect('accounts:profile')
+
+    return await render_async(request, 'accounts/profile.html', {})
+
+
 async def healthz(request):
     """Liveness/readiness probe for Caddy and Docker healthcheck.
 

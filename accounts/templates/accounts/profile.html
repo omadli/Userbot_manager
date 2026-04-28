@@ -1,0 +1,114 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex align-items-center mb-4">
+    <a href="{% url 'accounts:dashboard' %}" class="text-muted text-decoration-none small me-3">
+        <i class="bi bi-arrow-left me-1"></i>Dashboard
+    </a>
+    <h2 class="fw-bold mb-0">
+        <i class="bi bi-person-circle text-primary me-2"></i>Profil
+    </h2>
+</div>
+
+<div class="row g-3">
+    <!-- Profile info -->
+    <div class="col-lg-6">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white border-bottom py-3">
+                <span class="fw-bold"><i class="bi bi-pencil-square me-2"></i>Ma'lumotlarni tahrirlash</span>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="update_profile">
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-uppercase text-muted">Username</label>
+                        <input type="text" name="username" value="{{ user.username }}" required maxlength="150"
+                               class="form-control rounded-pill bg-light border-0">
+                        <small class="text-muted">Tizimga kirish uchun ishlatiladi.</small>
+                    </div>
+
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <label class="form-label fw-bold small text-uppercase text-muted">Ism</label>
+                            <input type="text" name="first_name" value="{{ user.first_name }}" maxlength="150"
+                                   class="form-control rounded-pill bg-light border-0">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label fw-bold small text-uppercase text-muted">Familiya</label>
+                            <input type="text" name="last_name" value="{{ user.last_name }}" maxlength="150"
+                                   class="form-control rounded-pill bg-light border-0">
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-uppercase text-muted">Email</label>
+                        <input type="email" name="email" value="{{ user.email }}"
+                               class="form-control rounded-pill bg-light border-0">
+                    </div>
+
+                    <button class="btn btn-primary rounded-pill px-4 fw-bold w-100">
+                        <i class="bi bi-check-lg me-1"></i>Saqlash
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Password change -->
+    <div class="col-lg-6">
+        <div class="card shadow-sm border-warning border-opacity-25">
+            <div class="card-header bg-white border-bottom py-3">
+                <span class="fw-bold text-warning"><i class="bi bi-shield-lock me-2"></i>Parolni o'zgartirish</span>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="change_password">
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-uppercase text-muted">Hozirgi parol</label>
+                        <input type="password" name="old_password" required autocomplete="current-password"
+                               class="form-control rounded-pill bg-light border-0">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-uppercase text-muted">Yangi parol</label>
+                        <input type="password" name="new_password1" required autocomplete="new-password"
+                               class="form-control rounded-pill bg-light border-0">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-uppercase text-muted">Yangi parol (takror)</label>
+                        <input type="password" name="new_password2" required autocomplete="new-password"
+                               class="form-control rounded-pill bg-light border-0">
+                    </div>
+
+                    <button class="btn btn-warning rounded-pill px-4 fw-bold text-dark w-100">
+                        <i class="bi bi-key me-1"></i>Parolni o'zgartirish
+                    </button>
+                    <small class="text-muted d-block mt-2">
+                        <i class="bi bi-info-circle me-1"></i>Parol o'zgartirilgandan keyin avtomatik chiqarilasiz.
+                    </small>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Read-only info -->
+    <div class="col-12">
+        <div class="card shadow-sm bg-light border-0">
+            <div class="card-body py-2">
+                <div class="row text-muted small">
+                    <div class="col-md-3"><strong>ID:</strong> {{ user.id }}</div>
+                    <div class="col-md-3"><strong>Ro'yxatdan o'tilgan:</strong> {{ user.date_joined|date:"d.m.Y H:i" }}</div>
+                    <div class="col-md-3"><strong>Oxirgi kirish:</strong> {{ user.last_login|date:"d.m.Y H:i"|default:"—" }}</div>
+                    <div class="col-md-3"><strong>Roli:</strong>
+                        {% if user.is_superuser %}<span class="badge bg-danger">superuser</span>
+                        {% elif user.is_staff %}<span class="badge bg-warning text-dark">staff</span>
+                        {% else %}<span class="badge bg-secondary">user</span>{% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

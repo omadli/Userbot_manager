@@ -1,0 +1,95 @@
+name: Deploy to AWS
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Only one deploy at a time. Don't cancel an in-flight deploy with a newer
+# commit — let it finish, then the queued run picks up HEAD.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 15
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+          DB_ENCRYPTION_KEY: ${{ secrets.DB_ENCRYPTION_KEY }}
+          API_ID: ${{ secrets.API_ID }}
+          API_HASH: ${{ secrets.API_HASH }}
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ vars.SERVER_USER || 'ubuntu' }}
+          port: ${{ vars.SERVER_PORT || 22 }}
+          key: ${{ secrets.SSH_KEY }}
+          envs: SECRET_KEY,DB_ENCRYPTION_KEY,API_ID,API_HASH
+          command_timeout: 12m
+          script_stop: true
+          script: |
+            set -euo pipefail
+
+            APP_DIR="${APP_DIR:-$HOME/apps/userbot-manager}"
+            echo "===> [1/5] Pulling latest code into $APP_DIR"
+            cd "$APP_DIR"
+            git fetch --quiet origin
+            git reset --hard origin/main
+
+            echo "===> [2/5] Upserting secrets in .env (other keys preserved)"
+            python3 - <<'PY'
+            import os, re, pathlib
+            p = pathlib.Path('.env')
+            if not p.exists():
+                raise SystemExit(
+                    ".env not found — run `cp .env.docker.example .env` and fill "
+                    "in the non-secret values (SITE_DOMAIN, ALLOWED_HOSTS, "
+                    "POSTGRES_PASSWORD, etc.) before re-running the deploy."
+                )
+            text = p.read_text()
+            # SECRET_KEY single-quoted because python-dotenv interprets `$`
+            # in unquoted values; the others are plain alphanumerics.
+            updates = {
+                'SECRET_KEY':        f"'{os.environ['SECRET_KEY']}'",
+                'DB_ENCRYPTION_KEY': os.environ['DB_ENCRYPTION_KEY'],
+                'API_ID':            os.environ['API_ID'],
+                'API_HASH':          os.environ['API_HASH'],
+            }
+            for key, val in updates.items():
+                pat = re.compile(rf'^{re.escape(key)}=.*$', re.M)
+                if pat.search(text):
+                    text = pat.sub(f'{key}={val}', text)
+                else:
+                    text += f'\n{key}={val}\n'
+            p.write_text(text)
+            os.chmod(p, 0o600)
+            print(f"  ok — {len(updates)} keys upserted, .env perms 600")
+            PY
+
+            echo "===> [3/5] Building image"
+            docker compose build
+
+            echo "===> [4/5] Starting stack (init runs migrations + collectstatic, then web/worker/caddy come up)"
+            docker compose up -d --remove-orphans
+
+            echo "===> [5/5] Health probe"
+            for i in $(seq 1 24); do
+                sleep 5
+                if docker compose exec -T web curl -fsS http://localhost:8000/healthz > /dev/null 2>&1; then
+                    echo "  ✓ /healthz returns 200 after ${i}*5s"
+                    docker compose ps
+                    exit 0
+                fi
+                echo "  waiting for web (attempt $i/24)..."
+            done
+
+            echo "  ✗ web never reported healthy — recent logs:"
+            docker compose ps
+            docker compose logs --tail 80 init web worker caddy
+            exit 1

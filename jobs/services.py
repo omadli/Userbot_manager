@@ -177,15 +177,20 @@ async def _resolve_message_peer(client, kind, peer_ref):
     raise ValueError(f"Unknown peer kind: {kind}")
 
 
-async def create_group_for_account(account, title, megagroup=True):
+async def create_group_for_account(account, title, megagroup=True, welcome_message=None):
     """
     Creates a Telegram supergroup (megagroup=True) or broadcast channel
     (megagroup=False — acts as channel; use create_channel_for_account for clarity).
+
+    When `welcome_message` is a non-empty string, it is sent to the new chat
+    immediately after creation (same client session — no second connect).
+    A failure on send is logged silently; the create itself still counts.
 
     Returns:
         { 'success': bool,
           'telegram_id': int | None,
           'invite_link': str | None,
+          'welcome_sent': bool,
           'error': str,
           'error_type': str,
           'stop_account': bool }  # True → don't retry this account
@@ -241,10 +246,22 @@ async def create_group_for_account(account, title, megagroup=True):
         except Exception:
             pass
 
+        welcome_sent = False
+        if welcome_message:
+            try:
+                await client.send_message(chat, welcome_message[:4096])
+                welcome_sent = True
+            except FloodWaitError:
+                # Don't bubble up — the chat is already created. Soft-skip.
+                pass
+            except Exception:
+                pass
+
         return {
             'success': True,
             'telegram_id': int(chat.id),
             'invite_link': invite_link,
+            'welcome_sent': welcome_sent,
             'error': '',
             'error_type': '',
             'stop_account': False,
