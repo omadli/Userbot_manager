@@ -16,6 +16,8 @@
             font-family: 'Inter', sans-serif;
             background-color: #f4f6f9;
         }
+
+        /* ── Sidebar: fixed on lg+, slides in as offcanvas on smaller ── */
         .sidebar {
             width: 260px;
             height: 100vh;
@@ -24,14 +26,66 @@
             top: 0;
             background: #ffffff;
             box-shadow: 2px 0 10px rgba(0,0,0,0.05);
-            transition: all 0.3s ease;
-            z-index: 1000;
+            transition: transform 0.3s ease;
+            z-index: 1040;
+            overflow-y: auto;
         }
         .main-content {
             margin-left: 260px;
             padding: 30px;
             min-height: 100vh;
         }
+        .mobile-topbar { display: none; }
+        .sidebar-backdrop {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.4);
+            z-index: 1030;
+        }
+
+        @media (max-width: 991.98px) {
+            .sidebar {
+                transform: translateX(-100%);
+            }
+            body.sidebar-open .sidebar { transform: translateX(0); }
+            body.sidebar-open .sidebar-backdrop { display: block; }
+            .main-content {
+                margin-left: 0;
+                padding: 16px;
+                padding-top: 76px;  /* clear the fixed mobile top bar */
+            }
+            .mobile-topbar {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                position: fixed;
+                top: 0; left: 0; right: 0;
+                height: 60px;
+                background: #ffffff;
+                padding: 0 16px;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+                z-index: 1020;
+            }
+            .mobile-topbar .menu-btn {
+                background: none;
+                border: 1px solid #e5e7eb;
+                width: 40px;
+                height: 40px;
+                border-radius: 8px;
+                font-size: 1.4rem;
+                color: #2563eb;
+            }
+            .mobile-topbar .brand-text {
+                font-weight: 700;
+                color: #111827;
+            }
+        }
+
+        @media (max-width: 575.98px) {
+            .main-content { padding: 12px; padding-top: 72px; }
+        }
+
         .nav-link {
             color: #4b5563;
             font-weight: 500;
@@ -82,13 +136,42 @@
             background: linear-gradient(135deg, #1d4ed8 0%, #1e3a8a 100%);
             color: white;
         }
+
+        /* Mobile readability tweaks. Tables that aren't already inside
+           .table-responsive get horizontal scroll via the .card-body
+           overflow rule — keeps Bootstrap's table layout intact. */
+        @media (max-width: 767.98px) {
+            .table { font-size: 0.875rem; }
+            .table td, .table th { padding: 0.5rem; white-space: nowrap; }
+            h2 { font-size: 1.4rem; }
+            h3 { font-size: 1.2rem; }
+            h4 { font-size: 1.1rem; }
+            .card-body { padding: 1rem; overflow-x: auto; }
+            .modal-body { padding: 1rem; }
+            /* Forms and buttons that overflow rounded pills get tight on mobile */
+            .btn { white-space: nowrap; }
+            /* Action button groups stack instead of overflowing */
+            .d-flex.gap-2.flex-wrap > .btn { flex: 1 1 auto; min-width: 0; }
+        }
     </style>
 </head>
 <body>
 
 {% if user.is_authenticated %}
+<!-- Mobile top bar (hidden on lg+) -->
+<div class="mobile-topbar">
+    <button class="menu-btn" type="button" id="sidebarToggle" aria-label="Menyu">
+        <i class="bi bi-list"></i>
+    </button>
+    <i class="bi bi-robot text-primary fs-4"></i>
+    <span class="brand-text">Account Pro</span>
+</div>
+
+<!-- Backdrop for offcanvas sidebar -->
+<div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
 <!-- Sidebar -->
-<div class="sidebar d-flex flex-column pt-3">
+<div class="sidebar d-flex flex-column pt-3" id="sidebar">
     <div class="brand-logo mb-4">
         <i class="bi bi-robot"></i>
         <span>Account Pro</span>
@@ -188,5 +271,34 @@
 {% endif %}
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+(function(){
+    // Mobile sidebar toggle: open via hamburger, close via backdrop or
+    // any nav-link click. Keeps it simple — Bootstrap offcanvas would
+    // also work but our sidebar is already a fixed-position element.
+    const toggle = document.getElementById('sidebarToggle');
+    const backdrop = document.getElementById('sidebarBackdrop');
+    const sidebar = document.getElementById('sidebar');
+    if (!toggle || !backdrop || !sidebar) return;
+
+    const open  = () => document.body.classList.add('sidebar-open');
+    const close = () => document.body.classList.remove('sidebar-open');
+
+    toggle.addEventListener('click', () => {
+        document.body.classList.toggle('sidebar-open');
+    });
+    backdrop.addEventListener('click', close);
+    sidebar.querySelectorAll('a.nav-link').forEach(a => {
+        a.addEventListener('click', () => {
+            // Only close on small screens — desktop sidebar is always open.
+            if (window.matchMedia('(max-width: 991.98px)').matches) close();
+        });
+    });
+    // Close if user resizes back to desktop
+    window.addEventListener('resize', () => {
+        if (!window.matchMedia('(max-width: 991.98px)').matches) close();
+    });
+})();
+</script>
 </body>
 </html>
