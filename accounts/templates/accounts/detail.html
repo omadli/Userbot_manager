@@ -225,8 +225,15 @@
         </button>
     </li>
     <li class="nav-item ms-auto">
-        <a href="{% url 'accounts:account_live_chats' account.pk %}"
+        <a href="{% url 'accounts:account_get_code' account.pk %}"
            class="nav-link text-success fw-bold">
+            <i class="bi bi-shield-lock-fill me-1"></i>Telegram kod olish
+            <i class="bi bi-arrow-right ms-1"></i>
+        </a>
+    </li>
+    <li class="nav-item">
+        <a href="{% url 'accounts:account_live_chats' account.pk %}"
+           class="nav-link text-info fw-bold">
             <i class="bi bi-chat-dots me-1"></i>Live chatlar
             <i class="bi bi-arrow-right ms-1"></i>
         </a>

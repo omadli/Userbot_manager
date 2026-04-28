@@ -1,0 +1,102 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex align-items-center mb-4 flex-wrap gap-2">
+    <a href="{% url 'accounts:account_detail' account.pk %}" class="text-muted text-decoration-none small me-3">
+        <i class="bi bi-arrow-left me-1"></i>Akkaunt
+    </a>
+    <h2 class="fw-bold mb-0">
+        <i class="bi bi-shield-lock-fill text-success me-2"></i>
+        Telegram login kodi
+    </h2>
+    <span class="badge bg-light text-dark border ms-2">
+        {{ account.first_name|default:account.phone_number }}
+        {% if account.username %}<span class="text-muted ms-1">@{{ account.username }}</span>{% endif %}
+    </span>
+</div>
+
+{% if result.success %}
+    <div class="row justify-content-center">
+        <div class="col-lg-7">
+            <div class="card shadow border-success border-2 rounded-4">
+                <div class="card-body p-4 p-md-5 text-center">
+                    <div class="mb-3">
+                        <i class="bi bi-check-circle-fill text-success" style="font-size: 3rem;"></i>
+                    </div>
+                    <p class="text-muted mb-2 small fw-bold text-uppercase">Telegram kodi
+                        {% if result.source == 'history' %}<span class="badge bg-info bg-opacity-10 text-info border ms-1">history</span>
+                        {% elif result.source == 'live' %}<span class="badge bg-success text-white ms-1">live</span>{% endif %}
+                    </p>
+                    <div class="display-3 fw-bold text-success font-monospace mb-3" id="code-text">{{ result.code }}</div>
+                    <button class="btn btn-light border rounded-pill px-4" onclick="copyCode()">
+                        <i class="bi bi-clipboard me-1"></i>Nusxalash
+                    </button>
+
+                    {% if result.sent_at %}
+                    <div class="text-muted small mt-3">
+                        <i class="bi bi-clock me-1"></i>Yuborilgan: {{ result.sent_at }}
+                    </div>
+                    {% endif %}
+
+                    {% if result.message %}
+                    <details class="mt-4 text-start">
+                        <summary class="text-muted small" style="cursor: pointer;">
+                            <i class="bi bi-chat-text me-1"></i>To'liq xabar
+                        </summary>
+                        <pre class="mb-0 mt-2 small bg-light p-3 rounded" style="white-space: pre-wrap;">{{ result.message }}</pre>
+                    </details>
+                    {% endif %}
+                </div>
+                <div class="card-footer bg-light text-center py-3">
+                    <a href="{% url 'accounts:account_get_code' account.pk %}" class="btn btn-outline-primary rounded-pill px-4">
+                        <i class="bi bi-arrow-clockwise me-1"></i>Yana yangi kod kutish (30s)
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+{% else %}
+    <div class="row justify-content-center">
+        <div class="col-lg-7">
+            <div class="card shadow-sm border-warning border-2 rounded-4">
+                <div class="card-body p-4 p-md-5 text-center">
+                    <div class="mb-3">
+                        <i class="bi bi-hourglass-split text-warning" style="font-size: 3rem;"></i>
+                    </div>
+                    <h4 class="fw-bold text-dark">Kod kelmadi</h4>
+                    <p class="text-muted">{{ result.error }}</p>
+
+                    <div class="alert alert-info text-start small mt-4 mb-4 border-0 rounded-3 bg-info bg-opacity-10">
+                        <strong>Qadamlar:</strong>
+                        <ol class="mb-0 mt-2 ps-3">
+                            <li>Telefon yoki kompyuteringizdan Telegram'ga kirishni boshlang</li>
+                            <li>Telegram raqamingizga kod yuboradi (boshqa aktiv sessiyaga, shu jumladan bunga)</li>
+                            <li>Bu sahifani <strong>Yangilash</strong> orqali tekshiring</li>
+                        </ol>
+                    </div>
+
+                    <div class="d-flex gap-2 justify-content-center flex-wrap">
+                        <a href="{% url 'accounts:account_get_code' account.pk %}" class="btn btn-warning rounded-pill px-4 fw-bold text-dark">
+                            <i class="bi bi-arrow-clockwise me-1"></i>Kuting + Yangilash (30s)
+                        </a>
+                        <a href="{% url 'accounts:account_get_code' account.pk %}?wait=0" class="btn btn-outline-secondary rounded-pill px-4">
+                            <i class="bi bi-bolt me-1"></i>Faqat history (tez)
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endif %}
+
+<script>
+function copyCode() {
+    const code = document.getElementById('code-text').textContent.trim();
+    navigator.clipboard.writeText(code).then(() => {
+        const btn = event.target.closest('button');
+        const orig = btn.innerHTML;
+        btn.innerHTML = '<i class="bi bi-check2 me-1"></i>Nusxalandi';
+        setTimeout(() => btn.innerHTML = orig, 2000);
+    });
+}
+</script>
+{% endblock %}

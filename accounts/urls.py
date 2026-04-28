@@ -13,6 +13,7 @@ urlpatterns = [
     path('edit/<int:pk>/', views.edit_account, name='edit_account'),
     path('detail/<int:pk>/', views.account_detail, name='account_detail'),
     path('detail/<int:pk>/live-chats/', views.account_live_chats, name='account_live_chats'),
+    path('detail/<int:pk>/get-code/', views.account_get_code, name='account_get_code'),
     path('tags/', views.tag_list, name='tag_list'),
     path('proxies/', views.proxy_list, name='proxy_list'),
     path('proxies/<int:pk>/', views.proxy_detail, name='proxy_detail'),

@@ -355,3 +355,120 @@ async def get_and_download_avatar(session_str, file_path, device_setting=None,
         return False
     finally:
         await client.disconnect()
+
+
+# ---------------------------------------------------------------------------
+# Fetch the latest Telegram login code for this account.
+#
+# When the user is locked out of an active session (logged out from phone
+# or PC), they can still receive the official Telegram login code via THIS
+# account's saved session — it arrives as a message from user `777000`
+# (Telegram service notifications). This helper:
+#   1. Reads the last few messages from 777000 (in case the code is already
+#      sitting in history from a recent login attempt)
+#   2. If nothing matches, listens for a new message for up to wait_seconds
+#   3. Extracts the 5-digit code from the message body
+# ---------------------------------------------------------------------------
+
+import re as _re
+from datetime import datetime, timedelta, timezone as _dt_tz
+
+TELEGRAM_SERVICE_USER_ID = 777000
+_LOGIN_CODE_RE = _re.compile(r'(?<!\d)(\d{5})(?!\d)')
+
+
+def _extract_code(text):
+    if not text:
+        return None
+    m = _LOGIN_CODE_RE.search(text)
+    return m.group(1) if m else None
+
+
+async def fetch_telegram_login_code(account, *, wait_seconds=30, lookback_seconds=600):
+    """Return the latest Telegram login code received by this account.
+
+    Returns:
+        {
+          'success': bool,
+          'code': str | None,         # 5-digit code if found
+          'message': str,              # raw message body that contained it
+          'sent_at': str (ISO),        # when Telegram sent it
+          'source': 'history' | 'live' | None,
+          'error': str (if not success),
+        }
+    """
+    from telethon import events  # local: avoids circular import at module load
+
+    device = await sync_to_async(lambda a: a.device_setting)(account)
+    proxy  = await sync_to_async(lambda a: a.proxy)(account)
+    client = await get_client(
+        temp_session_string=account.session_string,
+        device_setting=device,
+        api_id=account.api_id,
+        api_hash=account.api_hash,
+        proxy=proxy,
+    )
+
+    try:
+        me = await client.get_me()
+        if not me:
+            return {'success': False, 'code': None, 'message': '',
+                    'sent_at': None, 'source': None,
+                    'error': "Sessiya yaroqsiz — qayta kirish kerak"}
+
+        # 1) Scan recent history from 777000
+        cutoff = datetime.now(tz=_dt_tz.utc) - timedelta(seconds=lookback_seconds)
+        try:
+            async for msg in client.iter_messages(TELEGRAM_SERVICE_USER_ID, limit=20):
+                if msg.date and msg.date < cutoff:
+                    break  # older than lookback window
+                code = _extract_code(msg.message or '')
+                if code:
+                    return {
+                        'success': True, 'code': code,
+                        'message': (msg.message or '')[:1000],
+                        'sent_at': msg.date.isoformat() if msg.date else None,
+                        'source': 'history',
+                        'error': '',
+                    }
+        except Exception:
+            # Don't fail the whole call — fall through to live listening
+            pass
+
+        # 2) Listen for a fresh one
+        if wait_seconds <= 0:
+            return {'success': False, 'code': None, 'message': '',
+                    'sent_at': None, 'source': None,
+                    'error': "Yangi kod hali kelmagan. Telegram'dan kodni qaytadan so'rang va shu sahifani yangilang."}
+
+        future = asyncio.get_event_loop().create_future()
+
+        @client.on(events.NewMessage(from_users=TELEGRAM_SERVICE_USER_ID))
+        async def _handler(event):
+            code = _extract_code(event.message.message or '')
+            if code and not future.done():
+                future.set_result({
+                    'code': code,
+                    'message': (event.message.message or '')[:1000],
+                    'sent_at': event.message.date.isoformat() if event.message.date else None,
+                })
+
+        try:
+            res = await asyncio.wait_for(future, timeout=wait_seconds)
+            return {'success': True, **res, 'source': 'live', 'error': ''}
+        except asyncio.TimeoutError:
+            return {'success': False, 'code': None, 'message': '',
+                    'sent_at': None, 'source': None,
+                    'error': f"{wait_seconds} sekund kutildi, kod kelmadi"}
+        finally:
+            client.remove_event_handler(_handler)
+
+    except Exception as e:
+        return {'success': False, 'code': None, 'message': '',
+                'sent_at': None, 'source': None,
+                'error': f"Kutilmagan xato: {e}"}
+    finally:
+        try:
+            await client.disconnect()
+        except Exception:
+            pass

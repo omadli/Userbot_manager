@@ -9,6 +9,7 @@ from asgiref.sync import sync_to_async
 from .services import (
     send_code, verify_login, get_dialogs, get_and_download_avatar,
     check_spam, check_session, check_proxy, reset_quota,
+    fetch_telegram_login_code,
 )
 import csv
 from django.http import HttpResponse, JsonResponse
@@ -740,6 +741,35 @@ async def account_detail(request, pk):
 @sync_to_async
 def get_dialogs_sync(account):
     return (list(account.groups.all().order_by('-created_at')), list(account.channels.all().order_by('-created_at')))
+
+
+async def account_get_code(request, pk):
+    """Page that fetches the latest Telegram login code via this account's
+    saved session. Useful when the user lost their phone/PC session and
+    needs to log back in elsewhere using a code from another active
+    session — this app holds an active one in the DB."""
+    user = await _require_login(request)
+    if user is None:
+        return redirect(f"{settings.LOGIN_URL}?next={request.path}")
+
+    account = await get_object_sync(Account, pk, owner=user)
+
+    if not account.session_string:
+        messages.error(request, "Akkauntda sessiya yo'q — kod olib bo'lmaydi")
+        return redirect('accounts:account_detail', pk=pk)
+
+    # GET-with-?wait=1 (default) → block + listen up to 30s, then render.
+    # GET-with-?wait=0 → only check history, return immediately.
+    wait_param = request.GET.get('wait', '1')
+    wait_seconds = 30 if wait_param != '0' else 0
+
+    result = await fetch_telegram_login_code(account, wait_seconds=wait_seconds)
+
+    return await render_async(request, 'accounts/get_code.html', {
+        'account': account,
+        'result': result,
+        'waited': wait_seconds,
+    })
 
 
 async def account_live_chats(request, pk):
