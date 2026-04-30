@@ -98,6 +98,48 @@ async def profile(request):
     return await render_async(request, 'accounts/profile.html', {})
 
 
+@sync_to_async
+def _update_account_tags(user, pk, tag_ids):
+    """Replace an account's tag set. Caller already auth-scoped via owner=user;
+    Tag rows are also filtered to the same owner so users can't attach
+    another tenant's tag to their account."""
+    from .models import Tag as _Tag
+    try:
+        acc = Account.objects.select_related().get(pk=pk, owner=user)
+    except Account.DoesNotExist:
+        return None
+    valid = list(_Tag.objects.filter(owner=user, pk__in=tag_ids))
+    acc.tags.set(valid)
+    return list(acc.tags.all())
+
+
+async def account_tags_set(request, pk):
+    """AJAX endpoint for inline tag editing on the dashboard.
+
+    POST: tag_ids = [1, 2, 3]  (form-encoded list)
+    Response: {ok: true, tags: [{id, name}, ...]}
+    """
+    user = await _require_login(request)
+    if user is None:
+        return JsonResponse({'error': 'auth'}, status=401)
+    if request.method != 'POST':
+        return JsonResponse({'error': 'method'}, status=405)
+
+    raw = request.POST.getlist('tag_ids')
+    try:
+        tag_ids = [int(x) for x in raw if x]
+    except ValueError:
+        return JsonResponse({'error': 'bad_ids'}, status=400)
+
+    tags = await _update_account_tags(user, pk, tag_ids)
+    if tags is None:
+        return JsonResponse({'error': 'not_found'}, status=404)
+    return JsonResponse({
+        'ok': True,
+        'tags': [{'id': t.pk, 'name': t.name} for t in tags],
+    })
+
+
 async def healthz(request):
     """Liveness/readiness probe for host nginx and Docker healthcheck.
 
@@ -170,7 +212,21 @@ def process_dashboard_sync(request_get, request_post, action, selected_ids, user
             writer.writerow([bot.id, bot.phone_number, bot.first_name, bot.last_name, bot.username, bot.country_code, bot.groups_count, bot.channels_count, bot.is_active, bot.is_spam])
         return response, None
 
-    return None, {"filterset": filterset, "accounts": list(qs), "target_qs": list(qs.filter(id__in=selected_ids))}
+    # "Select all matching filter" — POST flag overrides the per-row checkboxes.
+    # Used by the dashboard's "Filterdagi hammasini" button and by the Quick
+    # Action cards (which apply a fixed filter and submit immediately).
+    select_all_filter = (request_post.get('select_all_filter') == '1') if request_post else False
+    if select_all_filter:
+        target = list(qs)
+    else:
+        target = list(qs.filter(id__in=selected_ids))
+
+    return None, {
+        "filterset": filterset,
+        "accounts": list(qs),
+        "target_qs": target,
+        "filter_count": qs.count(),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -190,6 +246,13 @@ async def dashboard(request):
         return response
 
     if request.method == "POST":
+        # When "select all matching filter" is on (Quick Actions or the
+        # smart-select button), selected_ids is empty but target_qs holds
+        # everyone matching the GET filter — derive the action ids from there.
+        select_all_filter = request.POST.get('select_all_filter') == '1'
+        if select_all_filter:
+            selected_ids = [str(a.id) for a in ctx["target_qs"]]
+
         if not selected_ids:
             messages.warning(request, "Hech qanday akkaunt tanlanmagan.")
             return redirect('accounts:dashboard')
@@ -258,9 +321,16 @@ async def dashboard(request):
 
         return redirect('accounts:dashboard')
 
+    @sync_to_async
+    def _user_tags():
+        from .models import Tag as _T
+        return list(_T.objects.filter(owner=user).order_by('name'))
+
     return await render_async(request, 'accounts/dashboard.html', {
         'filterset': ctx['filterset'],
-        'accounts': ctx['accounts']
+        'accounts': ctx['accounts'],
+        'filter_count': ctx.get('filter_count', 0),
+        'all_tags': await _user_tags(),
     })
 
 

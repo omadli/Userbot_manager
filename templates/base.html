@@ -213,6 +213,8 @@
         <li class="nav-item">
             <a href="{% url 'jobs:task_list' %}" class="nav-link {% if request.resolver_match.namespace == 'jobs' and 'task' in request.resolver_match.url_name %}active{% endif %}">
                 <i class="bi bi-activity"></i> Vazifalar
+                {# Live counter — updated by the running-summary poller every ~10s. #}
+                <span id="runningTaskBadge" class="badge bg-primary rounded-pill ms-2 d-none" title="Hozir ishlayotgan vazifalar"></span>
             </a>
         </li>
         <li class="nav-item">
@@ -270,6 +272,34 @@
     </div>
 {% endif %}
 
+<!-- Toast container: live notifications when a task finishes. Bootstrap
+     manages stacking; we just inject toasts as new tasks transition. -->
+{% if user.is_authenticated %}
+<div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1080;" id="toastStack"></div>
+
+<!-- Command palette (Ctrl/Cmd+K) — fuzzy search over routes + bulk actions -->
+<div class="modal fade" id="cmdkModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" style="max-width: 600px;">
+    <div class="modal-content border-0 shadow-lg rounded-4">
+      <div class="px-3 pt-3">
+        <div class="input-group">
+            <span class="input-group-text bg-white border-0"><i class="bi bi-search text-muted"></i></span>
+            <input type="text" id="cmdkInput" class="form-control border-0 fs-5"
+                   placeholder="Sahifa yoki amal qidirish..." autocomplete="off">
+            <span class="input-group-text bg-white border-0 small text-muted">Esc</span>
+        </div>
+      </div>
+      <ul class="list-group list-group-flush p-2" id="cmdkResults" style="max-height: 60vh; overflow-y: auto;"></ul>
+      <div class="px-3 py-2 border-top small text-muted d-flex gap-3">
+        <span><kbd>↑↓</kbd> tanlash</span>
+        <span><kbd>Enter</kbd> ochish</span>
+        <span><kbd>Esc</kbd> yopish</span>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 (function(){
@@ -300,5 +330,227 @@
     });
 })();
 </script>
+
+{% if user.is_authenticated %}
+<script>
+// ── Background task watcher ──────────────────────────────────────────────
+// Polls /jobs/running-summary/ every 10s. Updates the sidebar badge with
+// pending+running count and pops a toast for any task that just transitioned
+// to completed/failed/cancelled. Cursor (last seen pk) lives in
+// localStorage so toasts don't repeat across page navigations.
+(function(){
+    const badge = document.getElementById('runningTaskBadge');
+    const stack = document.getElementById('toastStack');
+    if (!badge || !stack || typeof bootstrap === 'undefined') return;
+
+    const CURSOR_KEY = 'runningSummaryCursor';
+    let cursor = parseInt(localStorage.getItem(CURSOR_KEY) || '0', 10) || 0;
+
+    const STATUS_STYLES = {
+        completed: { cls: 'text-bg-success', icon: 'bi-check-circle-fill' },
+        failed:    { cls: 'text-bg-danger',  icon: 'bi-x-circle-fill' },
+        cancelled: { cls: 'text-bg-warning', icon: 'bi-slash-circle-fill' },
+    };
+
+    function spawnToast(t) {
+        const style = STATUS_STYLES[t.status] || { cls: 'text-bg-secondary', icon: 'bi-info-circle-fill' };
+        const counts = `${t.success_count}✓ / ${t.error_count}✗`;
+        const link = `/jobs/${t.pk}/`;
+        const div = document.createElement('div');
+        div.className = `toast align-items-center ${style.cls} border-0 shadow`;
+        div.setAttribute('role', 'alert');
+        div.innerHTML = `
+            <div class="d-flex">
+                <div class="toast-body d-flex align-items-center gap-2">
+                    <i class="bi ${style.icon} fs-5"></i>
+                    <div>
+                        <div class="fw-bold">#${t.pk} ${t.kind_display}</div>
+                        <div class="small opacity-75">${t.status_display} · ${counts}
+                            <a href="${link}" class="text-white text-decoration-underline ms-1">ko'rish</a>
+                        </div>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>`;
+        stack.appendChild(div);
+        const t_ = new bootstrap.Toast(div, { delay: 8000 });
+        t_.show();
+        div.addEventListener('hidden.bs.toast', () => div.remove());
+    }
+
+    async function poll(suppressToasts) {
+        try {
+            const r = await fetch(`/jobs/running-summary/?since=${cursor}`, { credentials: 'same-origin' });
+            if (!r.ok) return;
+            const data = await r.json();
+            // Sidebar badge: hide when zero, show count otherwise.
+            if (data.running > 0) {
+                badge.textContent = data.running;
+                badge.classList.remove('d-none');
+            } else {
+                badge.classList.add('d-none');
+            }
+            // Spawn toasts in chronological order so the newest sits on top.
+            // First-load (cursor was 0) suppresses toasts — the user doesn't
+            // want yesterday's "done" pings every time they open a new tab.
+            if (!suppressToasts && data.finished && data.finished.length) {
+                data.finished.slice().reverse().forEach(spawnToast);
+            }
+            if (data.cursor && data.cursor > cursor) {
+                cursor = data.cursor;
+                localStorage.setItem(CURSOR_KEY, String(cursor));
+            }
+        } catch (e) {
+            // Network blip — just try again next tick.
+        }
+    }
+
+    // First tick: just seed the cursor + badge, no historical toasts.
+    poll(/*suppressToasts=*/ cursor === 0);
+    setInterval(() => poll(false), 10000);
+})();
+</script>
+
+<script>
+// ── Command palette (Ctrl/Cmd+K) ─────────────────────────────────────────
+// Static command index — server URLs are pre-resolved by Django, so the
+// JS just renders/filters/navigates. Each row's `keywords` includes both
+// Uzbek and a few English aliases so users can type either.
+(function(){
+    const modalEl = document.getElementById('cmdkModal');
+    if (!modalEl || typeof bootstrap === 'undefined') return;
+    const modal = new bootstrap.Modal(modalEl);
+    const input = document.getElementById('cmdkInput');
+    const list = document.getElementById('cmdkResults');
+
+    const COMMANDS = [
+        // Navigatsiya
+        { label: 'Akkauntlar',         href: '{% url "accounts:dashboard" %}',     icon: 'bi-person-lines-fill', keywords: 'akkaunt accounts dashboard bosh' },
+        { label: 'Yangi akkaunt qo\'shish', href: '{% url "accounts:add_account" %}', icon: 'bi-plus-circle-fill', keywords: 'yangi qo\'shish add new account login' },
+        { label: 'Vazifalar',          href: '{% url "jobs:task_list" %}',         icon: 'bi-activity', keywords: 'vazifa task jobs queue' },
+        { label: 'Statistika',         href: '{% url "jobs:stats_dashboard" %}',   icon: 'bi-bar-chart-fill', keywords: 'statistika stats grafik chart' },
+        { label: 'Guruhlar',           href: '{% url "groups:list" %}',            icon: 'bi-people-fill', keywords: 'guruh groups' },
+        { label: 'Kanallar',           href: '{% url "channels:list" %}',          icon: 'bi-megaphone-fill', keywords: 'kanal channels' },
+        { label: 'Teglar',             href: '{% url "accounts:tag_list" %}',      icon: 'bi-tags-fill', keywords: 'teg tag tags label' },
+        { label: 'Proxy\'lar',         href: '{% url "accounts:proxy_list" %}',    icon: 'bi-shield-lock-fill', keywords: 'proxy proxylar' },
+        { label: 'Nom pool\'lar',      href: '{% url "jobs:pool_list" %}',         icon: 'bi-collection-fill', keywords: 'nom pool name pools' },
+        { label: 'Profil',             href: '{% url "accounts:profile" %}',       icon: 'bi-person-gear', keywords: 'profil profile parol password' },
+        // Aktivlarning hammasiga bulk action — POST flag bilan dashboard'ga
+        { label: 'Hammaga xabar yuborish (aktivlar)', action: 'send_message',    icon: 'bi-chat-dots-fill', keywords: 'xabar yubor send message broadcast' },
+        { label: 'Warming run (aktivlar)',            action: 'account_warming', icon: 'bi-fire', keywords: 'warming isit faol activity' },
+        { label: 'Bo\'sh chatlardan chiqish (guruh)', action: 'leave_groups',    icon: 'bi-door-open-fill', keywords: 'chiqish leave guruh dead' },
+        { label: 'Bo\'sh kanallardan chiqish',        action: 'leave_channels',  icon: 'bi-door-open', keywords: 'chiqish leave kanal channel' },
+        {% if user.is_superuser %}
+        { label: 'Skriptlar',          href: '{% url "jobs:script_list" %}', icon: 'bi-terminal-fill', keywords: 'skript script admin' },
+        {% endif %}
+    ];
+
+    function csrfToken() {
+        const m = document.querySelector('input[name=csrfmiddlewaretoken]');
+        return m ? m.value : '';
+    }
+
+    function runAction(action) {
+        // Builds a hidden form that submits to /accounts/?is_active=True&is_spam=False
+        // with bulk_action + select_all_filter — the same path the Quick Actions take.
+        const f = document.createElement('form');
+        f.method = 'post';
+        f.action = '{% url "accounts:dashboard" %}?is_active=True&is_spam=False';
+        const csrf = document.createElement('input');
+        csrf.type = 'hidden'; csrf.name = 'csrfmiddlewaretoken'; csrf.value = csrfToken();
+        const ba = document.createElement('input');
+        ba.type = 'hidden'; ba.name = 'bulk_action'; ba.value = action;
+        const sf = document.createElement('input');
+        sf.type = 'hidden'; sf.name = 'select_all_filter'; sf.value = '1';
+        f.append(csrf, ba, sf);
+        document.body.appendChild(f);
+        f.submit();
+    }
+
+    let activeIdx = 0;
+    let filtered = COMMANDS.slice();
+
+    function render() {
+        list.innerHTML = '';
+        if (filtered.length === 0) {
+            list.innerHTML = '<li class="list-group-item text-muted text-center py-4 border-0">Hech narsa topilmadi</li>';
+            return;
+        }
+        filtered.forEach((c, i) => {
+            const li = document.createElement('li');
+            li.className = 'list-group-item d-flex align-items-center gap-3 border-0 rounded-3 my-1' + (i === activeIdx ? ' active bg-primary text-white' : '');
+            li.style.cursor = 'pointer';
+            li.innerHTML = `<i class="bi ${c.icon} fs-5"></i><span class="fw-medium">${c.label}</span>`;
+            li.addEventListener('click', () => execute(c));
+            li.addEventListener('mouseenter', () => { activeIdx = i; updateActive(); });
+            list.appendChild(li);
+        });
+    }
+
+    function updateActive() {
+        const items = list.querySelectorAll('.list-group-item');
+        items.forEach((it, i) => {
+            it.classList.toggle('active', i === activeIdx);
+            it.classList.toggle('bg-primary', i === activeIdx);
+            it.classList.toggle('text-white', i === activeIdx);
+        });
+        const cur = items[activeIdx];
+        if (cur && cur.scrollIntoView) cur.scrollIntoView({ block: 'nearest' });
+    }
+
+    function execute(c) {
+        modal.hide();
+        if (c.href) { window.location.href = c.href; }
+        else if (c.action) { runAction(c.action); }
+    }
+
+    function filter(q) {
+        q = q.trim().toLowerCase();
+        if (!q) {
+            filtered = COMMANDS.slice();
+        } else {
+            filtered = COMMANDS.filter(c =>
+                c.label.toLowerCase().includes(q) ||
+                (c.keywords || '').toLowerCase().includes(q)
+            );
+        }
+        activeIdx = 0;
+        render();
+    }
+
+    input.addEventListener('input', () => filter(input.value));
+
+    input.addEventListener('keydown', e => {
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            activeIdx = Math.min(filtered.length - 1, activeIdx + 1);
+            updateActive();
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            activeIdx = Math.max(0, activeIdx - 1);
+            updateActive();
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (filtered[activeIdx]) execute(filtered[activeIdx]);
+        }
+    });
+
+    modalEl.addEventListener('shown.bs.modal', () => {
+        input.value = '';
+        filter('');
+        input.focus();
+    });
+
+    // Open with Ctrl+K / Cmd+K from anywhere except text inputs (so the user
+    // can still type "k" inside a textarea without triggering the palette).
+    document.addEventListener('keydown', e => {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+            e.preventDefault();
+            modal.show();
+        }
+    });
+})();
+</script>
+{% endif %}
 </body>
 </html>

@@ -1697,9 +1697,46 @@ async def task_detail(request, pk):
             await Task.objects.filter(pk=pk, owner=user).adelete()
             messages.success(request, "Task o'chirildi")
             return redirect('jobs:task_list')
+        elif action == 'repeat':
+            return await _do_task_repeat(request, user, task)
         return redirect('jobs:task_detail', pk=pk)
 
     return await render_async(request, 'jobs/task_detail.html', {'task': task})
+
+
+async def _do_task_repeat(request, user, task):
+    """Clone a finished task into a fresh `pending` row.
+
+    Carries `kind` and `params` over verbatim — `params` already holds
+    `account_ids` and the runner-specific config the original form gathered,
+    so the new task targets the same accounts with the same settings. We
+    drop scheduling (recurring_cron, scheduled_at) and reset all progress
+    counters; the new task becomes a one-shot that the worker picks up
+    immediately.
+    """
+    if not task.is_finished:
+        messages.warning(request, "Faqat tugagan task'larni qaytarish mumkin")
+        return redirect('jobs:task_detail', pk=task.pk)
+
+    new_task = await Task.objects.acreate(
+        kind=task.kind,
+        owner=user,
+        params=dict(task.params or {}),
+    )
+    messages.success(request, f"Vazifa #{new_task.pk} qaytadan navbatga qo'yildi")
+    return redirect('jobs:task_detail', pk=new_task.pk)
+
+
+async def task_repeat(request, pk):
+    """Standalone POST endpoint so the task_list page can repeat without
+    going through task_detail. Same semantics as `_do_task_repeat`."""
+    user = await _require_login(request)
+    if user is None:
+        return _login_redirect(request)
+    if request.method != 'POST':
+        return redirect('jobs:task_list')
+    task = await _load_task(user, pk)
+    return await _do_task_repeat(request, user, task)
 
 
 # ---------------------------------------------------------------------------
@@ -1742,6 +1779,56 @@ def _fetch_events(task, after, level, account_id, limit):
     if account_id:
         qs = qs.filter(account_id=account_id)
     return list(qs.order_by('id')[:limit])
+
+
+@sync_to_async
+def _running_summary(user, since_id):
+    """Snapshot for the topbar widget + toast feed.
+
+    Returns:
+      running_count — current pending+running tasks (lifetime, not since)
+      finished_since — tasks that transitioned to a terminal state with
+                       pk > since_id (lets the client emit a toast once
+                       per finished task, then advance its cursor)
+    """
+    running_count = Task.objects.filter(
+        owner=user, status__in=['pending', 'running']
+    ).count()
+    finished = list(
+        Task.objects.filter(
+            owner=user,
+            status__in=['completed', 'failed', 'cancelled'],
+            pk__gt=since_id,
+        )
+        .order_by('-pk')[:20]
+        .values('pk', 'kind', 'status', 'success_count', 'error_count')
+    )
+    # Map kind code → human label; cheap, avoids exposing internals.
+    kind_map = dict(Task.KIND_CHOICES)
+    status_map = dict(Task.STATUS_CHOICES)
+    for f in finished:
+        f['kind_display'] = kind_map.get(f['kind'], f['kind'])
+        f['status_display'] = status_map.get(f['status'], f['status'])
+    return running_count, finished
+
+
+async def running_summary_json(request):
+    """Polled by base.html JS every ~10s. `since` is the highest task id
+    the client has already shown a toast for; the response only includes
+    rows newer than that to keep the payload tiny."""
+    user = await _require_login(request)
+    if user is None:
+        return JsonResponse({'error': 'auth'}, status=401)
+    try:
+        since = int(request.GET.get('since') or 0)
+    except ValueError:
+        since = 0
+    running, finished = await _running_summary(user, since)
+    return JsonResponse({
+        'running': running,
+        'finished': finished,
+        'cursor': finished[0]['pk'] if finished else since,
+    })
 
 
 async def task_events_json(request, pk):

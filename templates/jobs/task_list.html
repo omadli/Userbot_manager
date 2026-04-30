@@ -88,6 +88,12 @@
                             </button>
                         </form>
                         {% else %}
+                        <form method="post" action="{% url 'jobs:task_repeat' t.pk %}" class="m-0 d-inline">
+                            {% csrf_token %}
+                            <button class="btn btn-sm btn-outline-success rounded-pill px-2" title="Bir xil parametrlar bilan qayta ishga tushirish">
+                                <i class="bi bi-arrow-repeat"></i>
+                            </button>
+                        </form>
                         <form method="post" class="m-0 d-inline" onsubmit="return confirm('Taskni o\'chirasizmi?');">
                             {% csrf_token %}
                             <input type="hidden" name="action" value="delete">

@@ -36,8 +36,10 @@ urlpatterns = [
     path('run-script/', views.task_create_run_script, name='task_create_run_script'),
 
     path('<int:pk>/', views.task_detail, name='task_detail'),
+    path('<int:pk>/repeat/', views.task_repeat, name='task_repeat'),
 
     # JSON (AJAX polling)
     path('<int:pk>/progress/', views.task_progress_json, name='task_progress'),
     path('<int:pk>/events/', views.task_events_json, name='task_events'),
+    path('running-summary/', views.running_summary_json, name='running_summary'),
 ]

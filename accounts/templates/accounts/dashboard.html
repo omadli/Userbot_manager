@@ -33,6 +33,114 @@
     </div>
 </div>
 
+{# ── Quick Actions: 6 darajaga maksimal qulay yorliqlar ─────────────────── #}
+{# Bulk-action quick cards POST to /accounts/ with select_all_filter=1 +     #}
+{# is_active=True so the server applies the action to every active+spammas #}
+{# account without making the user touch checkboxes or filters first.       #}
+<div class="row g-2 g-md-3 mb-4 quick-actions">
+    <div class="col-6 col-md-4 col-lg-2">
+        <a href="{% url 'accounts:add_account' %}" class="card border-0 shadow-sm h-100 text-decoration-none text-dark p-3 quick-card">
+            <div class="d-flex align-items-center gap-2">
+                <span class="quick-icon bg-primary bg-opacity-10 text-primary"><i class="bi bi-plus-lg"></i></span>
+                <div>
+                    <div class="fw-bold small">Yangi akkaunt</div>
+                    <div class="text-muted" style="font-size: 0.7rem;">Login qilish</div>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <form method="post" action="{% url 'accounts:dashboard' %}?is_active=True&is_spam=False" class="m-0 h-100">
+            {% csrf_token %}
+            <input type="hidden" name="bulk_action" value="send_message">
+            <input type="hidden" name="select_all_filter" value="1">
+            <button type="submit" class="card border-0 shadow-sm h-100 w-100 text-start text-dark p-3 quick-card border-bottom-0">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="quick-icon bg-info bg-opacity-10 text-info"><i class="bi bi-chat-dots-fill"></i></span>
+                    <div>
+                        <div class="fw-bold small">Xabar yuborish</div>
+                        <div class="text-muted" style="font-size: 0.7rem;">Aktivlarning hammasi</div>
+                    </div>
+                </div>
+            </button>
+        </form>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <form method="post" action="{% url 'accounts:dashboard' %}?is_active=True&is_spam=False" class="m-0 h-100">
+            {% csrf_token %}
+            <input type="hidden" name="bulk_action" value="account_warming">
+            <input type="hidden" name="select_all_filter" value="1">
+            <button type="submit" class="card border-0 shadow-sm h-100 w-100 text-start text-dark p-3 quick-card">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="quick-icon bg-warning bg-opacity-10 text-warning"><i class="bi bi-fire"></i></span>
+                    <div>
+                        <div class="fw-bold small">Warming</div>
+                        <div class="text-muted" style="font-size: 0.7rem;">Akkauntlarni isitish</div>
+                    </div>
+                </div>
+            </button>
+        </form>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <form method="post" action="{% url 'accounts:dashboard' %}?is_active=True&is_spam=False" class="m-0 h-100">
+            {% csrf_token %}
+            <input type="hidden" name="bulk_action" value="leave_groups">
+            <input type="hidden" name="select_all_filter" value="1">
+            <button type="submit" class="card border-0 shadow-sm h-100 w-100 text-start text-dark p-3 quick-card">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="quick-icon bg-danger bg-opacity-10 text-danger"><i class="bi bi-door-open-fill"></i></span>
+                    <div>
+                        <div class="fw-bold small">Bo'sh chatdan chiq</div>
+                        <div class="text-muted" style="font-size: 0.7rem;">Admin emas guruhlar</div>
+                    </div>
+                </div>
+            </button>
+        </form>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <a href="{% url 'jobs:task_list' %}" class="card border-0 shadow-sm h-100 text-decoration-none text-dark p-3 quick-card">
+            <div class="d-flex align-items-center gap-2">
+                <span class="quick-icon bg-success bg-opacity-10 text-success"><i class="bi bi-activity"></i></span>
+                <div>
+                    <div class="fw-bold small">Vazifalar</div>
+                    <div class="text-muted" style="font-size: 0.7rem;">Ishlayotganlar</div>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <a href="{% url 'jobs:stats_dashboard' %}" class="card border-0 shadow-sm h-100 text-decoration-none text-dark p-3 quick-card">
+            <div class="d-flex align-items-center gap-2">
+                <span class="quick-icon bg-secondary bg-opacity-10 text-secondary"><i class="bi bi-bar-chart-fill"></i></span>
+                <div>
+                    <div class="fw-bold small">Statistika</div>
+                    <div class="text-muted" style="font-size: 0.7rem;">Grafiklar</div>
+                </div>
+            </div>
+        </a>
+    </div>
+</div>
+<style>
+.quick-card {
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    cursor: pointer;
+    background: #fff;
+}
+.quick-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 16px rgba(0,0,0,0.08) !important;
+}
+.quick-icon {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.05rem;
+    flex-shrink: 0;
+}
+</style>
+
 <div class="row">
     <!-- Accounts List -->
     <div class="col-lg-9 order-2 order-lg-1">
@@ -41,7 +149,17 @@
             <div class="card shadow-sm border-0 mb-4">
                 
                 <div class="card-header bg-white border-bottom py-3 d-flex flex-wrap justify-content-between align-items-center">
-                    <span class="fw-bold text-dark"><i class="bi bi-list-task me-2"></i>Maxsus Harakatlar (Bulk Actions)</span>
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <span class="fw-bold text-dark"><i class="bi bi-list-task me-2"></i>Maxsus Harakatlar</span>
+                        {# "Select all matching filter" — when set, server ignores per-row checkboxes. #}
+                        <input type="hidden" name="select_all_filter" id="selectAllFilterInput" value="0">
+                        <button type="button" id="selectAllFilterBtn"
+                                class="btn btn-sm btn-outline-primary rounded-pill px-3 fw-medium"
+                                title="Joriy filterdagi barcha akkauntlarga qo'llash">
+                            <i class="bi bi-funnel-fill me-1"></i>
+                            Filterdagilarni: <span id="filterCount" class="fw-bold">{{ filter_count|default:0 }}</span>
+                        </button>
+                    </div>
                     <div class="d-flex gap-2 align-items-center">
                         <select name="bulk_action" class="form-select form-select-sm rounded-pill bg-light border-0 fw-medium" style="width: auto;">
                             <option value="">Harakatni tanlang...</option>
@@ -165,11 +283,16 @@
                                     <span class="badge bg-primary bg-opacity-10 text-primary border border-primary rounded-pill px-2 fs-6" title="Kanallar soni">Kanal: {{ account.channels_count|default:0 }}</span>
                                 </td>
                                 <td>
-                                    <div class="d-flex flex-wrap gap-1" style="max-width: 150px;">
+                                    {# Inline tag edit: clicking opens the modal pre-filled with current tags #}
+                                    <div class="d-flex flex-wrap gap-1 tag-cell"
+                                         data-account-id="{{ account.id }}"
+                                         data-current-tags="{% for t in account.tags.all %}{{ t.id }}{% if not forloop.last %},{% endif %}{% endfor %}"
+                                         style="max-width: 150px; cursor: pointer;"
+                                         title="Bosib tag'larni o'zgartirish">
                                         {% for tag in account.tags.all %}
                                         <span class="badge bg-secondary bg-opacity-10 text-secondary border-secondary border opacity-75">{{ tag.name }}</span>
                                         {% empty %}
-                                        <span class="text-muted small">Teg yo'q</span>
+                                        <span class="text-muted small"><i class="bi bi-pencil-square me-1"></i>Teg qo'shish</span>
                                         {% endfor %}
                                     </div>
                                 </td>
@@ -249,6 +372,32 @@
             });
         });
 
+        // "Filterdagilarni N" tugmasi — server filter qo'llaganidagi
+        // barcha akkauntlarni belgilash. UI'da har bir checkbox'ni ham
+        // belgilab qo'yamiz, shuning uchun action submit'da hidden flag
+        // bilan birga real id ro'yxat ham bormaydi (lekin server flagni
+        // ko'rib selected_ids ni o'zi to'ldiradi).
+        const selectAllFilterBtn = document.getElementById('selectAllFilterBtn');
+        const selectAllFilterInput = document.getElementById('selectAllFilterInput');
+        if (selectAllFilterBtn && selectAllFilterInput) {
+            selectAllFilterBtn.addEventListener('click', function() {
+                const isOn = selectAllFilterInput.value === '1';
+                if (isOn) {
+                    selectAllFilterInput.value = '0';
+                    selectAllFilterBtn.classList.remove('btn-primary', 'text-white');
+                    selectAllFilterBtn.classList.add('btn-outline-primary');
+                    checkboxes.forEach(cb => cb.checked = false);
+                    if (selectAll) selectAll.checked = false;
+                } else {
+                    selectAllFilterInput.value = '1';
+                    selectAllFilterBtn.classList.remove('btn-outline-primary');
+                    selectAllFilterBtn.classList.add('btn-primary', 'text-white');
+                    checkboxes.forEach(cb => cb.checked = true);
+                    if (selectAll) selectAll.checked = true;
+                }
+            });
+        }
+
         // Dynamic Columns Memory Toggle
         const toggles = document.querySelectorAll('.col-toggle');
         
@@ -302,6 +451,112 @@
     /* Prevent text selection when clicking switches rapidly */
     .form-check-label { user-select: none; }
 </style>
+<!-- Inline Tag Editor Modal — single instance, opened by JS on .tag-cell click -->
+<div class="modal fade" id="tagsEditModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header bg-light border-bottom py-3">
+        <h5 class="modal-title fw-bold text-dark">
+            <i class="bi bi-tags-fill me-2 text-secondary"></i>Akkaunt tag'larini taxrirlash
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-4">
+        <p class="text-muted small mb-3">Tag'larni belgilang va saqlang. Yangi tag yaratish uchun
+            <a href="{% url 'accounts:tag_list' %}" class="text-decoration-none">teglar sahifasiga</a> o'ting.</p>
+        <div id="tagsEditList" class="d-flex flex-wrap gap-2">
+            {% for t in all_tags %}
+            <label class="d-inline-flex align-items-center gap-2 px-3 py-2 border rounded-pill bg-light"
+                   style="cursor: pointer; user-select: none;">
+                <input type="checkbox" class="form-check-input tag-edit-checkbox m-0" value="{{ t.pk }}">
+                <span>{{ t.name }}</span>
+            </label>
+            {% empty %}
+            <p class="text-muted">Hali tag mavjud emas. <a href="{% url 'accounts:tag_list' %}">Yarating</a>.</p>
+            {% endfor %}
+        </div>
+        <div id="tagsEditError" class="alert alert-danger mt-3 mb-0 d-none small"></div>
+      </div>
+      <div class="modal-footer bg-light border-top py-3">
+        <button type="button" class="btn btn-secondary rounded-pill px-4" data-bs-dismiss="modal">Bekor qilish</button>
+        <button type="button" id="tagsEditSaveBtn" class="btn btn-primary rounded-pill px-4 fw-bold">
+            <i class="bi bi-check-lg me-1"></i>Saqlash
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+    const modalEl = document.getElementById('tagsEditModal');
+    if (!modalEl || typeof bootstrap === 'undefined') return;
+    const modal = new bootstrap.Modal(modalEl);
+    const checkboxes = modalEl.querySelectorAll('.tag-edit-checkbox');
+    const saveBtn = document.getElementById('tagsEditSaveBtn');
+    const errBox = document.getElementById('tagsEditError');
+    let currentCell = null;
+    let currentAccountId = null;
+
+    function openForCell(cell) {
+        currentCell = cell;
+        currentAccountId = cell.getAttribute('data-account-id');
+        const cur = (cell.getAttribute('data-current-tags') || '').split(',').filter(Boolean);
+        checkboxes.forEach(cb => { cb.checked = cur.includes(cb.value); });
+        errBox.classList.add('d-none');
+        modal.show();
+    }
+
+    document.querySelectorAll('.tag-cell').forEach(cell => {
+        cell.addEventListener('click', e => {
+            e.stopPropagation();
+            openForCell(cell);
+        });
+    });
+
+    function csrfToken() {
+        const m = document.querySelector('input[name=csrfmiddlewaretoken]');
+        return m ? m.value : '';
+    }
+
+    saveBtn.addEventListener('click', async () => {
+        if (!currentAccountId) return;
+        const ids = Array.from(checkboxes).filter(c => c.checked).map(c => c.value);
+        const fd = new FormData();
+        ids.forEach(id => fd.append('tag_ids', id));
+        saveBtn.disabled = true;
+        try {
+            const r = await fetch(`/accounts/detail/${currentAccountId}/tags/set/`, {
+                method: 'POST',
+                body: fd,
+                headers: { 'X-CSRFToken': csrfToken() },
+                credentials: 'same-origin',
+            });
+            const data = await r.json();
+            if (!r.ok || !data.ok) {
+                errBox.textContent = data.error || 'Saqlanmadi';
+                errBox.classList.remove('d-none');
+                return;
+            }
+            // Re-render the cell with new tags. data.tags = [{id, name}]
+            const html = data.tags.length === 0
+                ? '<span class="text-muted small"><i class="bi bi-pencil-square me-1"></i>Teg qo\'shish</span>'
+                : data.tags.map(t =>
+                    `<span class="badge bg-secondary bg-opacity-10 text-secondary border-secondary border opacity-75">${t.name}</span>`
+                ).join('');
+            currentCell.innerHTML = html;
+            currentCell.setAttribute('data-current-tags', data.tags.map(t => t.id).join(','));
+            modal.hide();
+        } catch (e) {
+            errBox.textContent = 'Tarmoq xatosi: ' + e.message;
+            errBox.classList.remove('d-none');
+        } finally {
+            saveBtn.disabled = false;
+        }
+    });
+})();
+</script>
+
 {% for account in accounts %}
 <!-- Edit Modal -->
 <div class="modal fade" id="editModal{{ account.id }}" tabindex="-1" aria-hidden="true">
