@@ -900,6 +900,65 @@ async def account_live_chats(request, pk):
     })
 
 
+async def account_chat_detail(request, pk, chat_id):
+    """Telegram-style chat viewer: last ~40 messages from one chat, plus
+    a textbox to send a new message. For broadcast channels with a linked
+    discussion group, each post grows a "Comment" inline form that posts
+    via comment_to=<msg_id>.
+
+    Hits the Telegram API on every load — typically <2s for chats with
+    cached entities. Posting is also synchronous; the result message
+    flashes back via Django messages.
+    """
+    user = await _require_login(request)
+    if user is None:
+        return redirect(f"{settings.LOGIN_URL}?next={request.path}")
+
+    account = await get_object_sync(Account, pk, owner=user)
+    if not account.session_string:
+        messages.error(request, "Akkauntda sessiya yo'q — chatni ochib bo'lmaydi")
+        return redirect('accounts:account_detail', pk=pk)
+
+    from jobs.services import (
+        fetch_chat_messages_for_account, send_chat_message_for_account,
+    )
+
+    if request.method == 'POST':
+        text = (request.POST.get('text') or '').strip()
+        comment_to = request.POST.get('comment_to') or None
+        if comment_to and comment_to.isdigit():
+            comment_to = int(comment_to)
+        else:
+            comment_to = None
+
+        if not text:
+            messages.warning(request, "Xabar bo'sh")
+            return redirect('accounts:account_chat_detail', pk=pk, chat_id=chat_id)
+
+        result = await send_chat_message_for_account(
+            account, chat_id, text, comment_to=comment_to,
+        )
+        if result['success']:
+            messages.success(
+                request,
+                "Sharh yuborildi" if comment_to else "Xabar yuborildi",
+            )
+        else:
+            messages.error(request, f"Xato: {result['error']}")
+        return redirect('accounts:account_chat_detail', pk=pk, chat_id=chat_id)
+
+    result = await fetch_chat_messages_for_account(account, chat_id)
+    if not result['success']:
+        messages.error(request, f"Chatni ochishda xato: {result['error']}")
+        return redirect('accounts:account_live_chats', pk=pk)
+
+    return await render_async(request, 'accounts/chat_detail.html', {
+        'account': account,
+        'chat': result['chat'],
+        'messages_list': result['messages'],
+    })
+
+
 async def account_dialogs(request, pk):
     """Kept for URL compatibility — redirects to the unified detail page."""
     return redirect('accounts:account_detail', pk=pk)

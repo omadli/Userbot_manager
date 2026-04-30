@@ -1,0 +1,181 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex align-items-center mb-3 flex-wrap gap-2">
+    <a href="{% url 'accounts:account_live_chats' account.pk %}" class="text-muted text-decoration-none small me-3">
+        <i class="bi bi-arrow-left me-1"></i>Live chatlar
+    </a>
+    <h2 class="fw-bold mb-0 d-flex align-items-center gap-2">
+        {% if chat.kind == 'channel' %}
+            <i class="bi bi-megaphone-fill text-primary"></i>
+        {% else %}
+            <i class="bi bi-people-fill text-info"></i>
+        {% endif %}
+        <span>{{ chat.title }}</span>
+    </h2>
+    {% if chat.username %}
+    <a href="https://t.me/{{ chat.username }}" target="_blank" class="badge bg-light text-primary border text-decoration-none">@{{ chat.username }}</a>
+    {% endif %}
+    {% if chat.is_creator %}<span class="badge bg-warning text-dark">creator</span>{% endif %}
+    {% if chat.is_admin %}<span class="badge bg-info bg-opacity-10 text-info border">admin</span>{% endif %}
+    {% if chat.members %}<span class="badge bg-light text-dark border">{{ chat.members }} a'zo</span>{% endif %}
+    <span class="ms-auto text-muted small">
+        {{ account.first_name|default:account.phone_number }} dan
+    </span>
+</div>
+
+{# ── Chat panel ─────────────────────────────────────────────────────────── #}
+<div class="card shadow-sm border-0 rounded-4">
+    <div class="card-body p-0">
+        {# Messages list — scrollable. Newest at the bottom; we autoscroll on load. #}
+        <div id="messageList"
+             class="chat-messages p-3 p-md-4"
+             style="max-height: 65vh; overflow-y: auto; background-color: #f7fafc;">
+            {% if messages_list %}
+                {% for m in messages_list %}
+                <div class="msg-bubble mb-2 d-flex {% if m.out %}justify-content-end{% endif %}">
+                    <div class="msg-content {% if m.out %}msg-out{% else %}msg-in{% endif %} px-3 py-2 rounded-3 shadow-sm"
+                         style="max-width: 75%;">
+                        {% if m.sender and not m.out %}
+                            <div class="small fw-bold text-primary mb-1">{{ m.sender }}</div>
+                        {% endif %}
+                        {% if m.text %}
+                            <div class="msg-text" style="white-space: pre-wrap; word-break: break-word;">{{ m.text }}</div>
+                        {% endif %}
+                        {% if m.has_media and m.text == '[media]' %}
+                            <div class="text-muted fst-italic"><i class="bi bi-image me-1"></i>Media (preview ko'rinmaydi)</div>
+                        {% endif %}
+                        <div class="d-flex align-items-center gap-2 mt-1">
+                            <small class="msg-time">{{ m.date_human }}</small>
+                            {% if chat.kind == 'channel' and m.replies %}
+                                <small class="text-muted"><i class="bi bi-chat-text"></i> {{ m.replies }}</small>
+                            {% endif %}
+                            {% if m.post_link %}
+                                <a href="{{ m.post_link }}" target="_blank" class="text-decoration-none small text-muted" title="Telegram'da ochish">
+                                    <i class="bi bi-box-arrow-up-right"></i>
+                                </a>
+                            {% endif %}
+                            {% if chat.kind == 'channel' and chat.has_comments %}
+                                <button type="button" class="btn btn-sm btn-link text-decoration-none p-0 ms-auto comment-toggle"
+                                        data-msg-id="{{ m.id }}">
+                                    <i class="bi bi-chat-left-text"></i> Sharh
+                                </button>
+                            {% endif %}
+                        </div>
+                        {% if chat.kind == 'channel' and chat.has_comments %}
+                        {# Inline comment form, hidden by default. #}
+                        <form method="post" class="comment-form mt-2 d-none" action="{% url 'accounts:account_chat_detail' account.pk chat.id %}">
+                            {% csrf_token %}
+                            <input type="hidden" name="comment_to" value="{{ m.id }}">
+                            <div class="input-group input-group-sm">
+                                <textarea name="text" class="form-control" rows="2" placeholder="Sharh yozing..." maxlength="4096" required></textarea>
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="bi bi-send-fill"></i>
+                                </button>
+                            </div>
+                        </form>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="text-center text-muted py-5">
+                    <i class="bi bi-chat-dots fs-1 opacity-25 d-block mb-2"></i>
+                    Xabar yo'q
+                </div>
+            {% endif %}
+        </div>
+
+        {# Send box at the bottom — only shown when this account can post. #}
+        {% if chat.can_send %}
+        <form method="post" action="{% url 'accounts:account_chat_detail' account.pk chat.id %}"
+              class="border-top p-3 bg-white" id="sendForm">
+            {% csrf_token %}
+            <div class="input-group">
+                <textarea name="text"
+                          class="form-control rounded-start-4 border-0 bg-light"
+                          rows="2"
+                          placeholder="{% if chat.kind == 'channel' %}Postga... (faqat admin){% else %}Xabar yozing...{% endif %}"
+                          maxlength="4096"
+                          required></textarea>
+                <button type="submit" class="btn btn-primary rounded-end-4 px-4 fw-bold">
+                    <i class="bi bi-send-fill me-1"></i>Yuborish
+                </button>
+            </div>
+            <div class="form-text small mt-2">
+                <i class="bi bi-info-circle me-1"></i>
+                Xabar <strong>{{ account.first_name|default:account.phone_number }}</strong> akkauntidan yuboriladi.
+                Ctrl+Enter — tezkor yuborish.
+            </div>
+        </form>
+        {% elif chat.kind == 'channel' and chat.has_comments %}
+        <div class="border-top p-3 bg-light text-center text-muted small">
+            <i class="bi bi-info-circle me-1"></i>
+            Bu kanalga to'g'ridan-to'g'ri post yuborolmaysiz (admin emassiz),
+            lekin har bir post tagidagi <strong>"Sharh"</strong> tugmasi orqali izoh qoldira olasiz.
+        </div>
+        {% else %}
+        <div class="border-top p-3 bg-light text-center text-muted small">
+            <i class="bi bi-lock me-1"></i>Sizda bu kanalga post huquqi yo'q
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+.msg-content {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+}
+.msg-content.msg-out {
+    background: #dcf8c6;
+    border-color: #c5e1a5;
+}
+.msg-time {
+    color: #94a3b8;
+    font-size: 0.72rem;
+}
+.chat-messages {
+    background-image:
+        radial-gradient(circle at 20% 20%, rgba(35, 182, 233, 0.04) 0, transparent 40%),
+        radial-gradient(circle at 80% 70%, rgba(59, 130, 246, 0.04) 0, transparent 40%);
+}
+@media (max-width: 575.98px) {
+    .msg-content { max-width: 90% !important; font-size: 0.92rem; }
+}
+</style>
+
+<script>
+(function() {
+    // Auto-scroll to the most recent message on load — Telegram parity.
+    const list = document.getElementById('messageList');
+    if (list) list.scrollTop = list.scrollHeight;
+
+    // Channel-post comment toggles. Each "Sharh" button reveals/hides
+    // the inline comment form attached to its bubble.
+    document.querySelectorAll('.comment-toggle').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const bubble = btn.closest('.msg-content');
+            const form = bubble && bubble.querySelector('.comment-form');
+            if (!form) return;
+            const wasHidden = form.classList.contains('d-none');
+            form.classList.toggle('d-none');
+            if (wasHidden) {
+                const ta = form.querySelector('textarea');
+                if (ta) setTimeout(() => ta.focus(), 50);
+            }
+        });
+    });
+
+    // Ctrl+Enter inside any textarea submits its parent form.
+    document.querySelectorAll('textarea').forEach(ta => {
+        ta.addEventListener('keydown', e => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                e.preventDefault();
+                const form = ta.closest('form');
+                if (form) form.requestSubmit();
+            }
+        });
+    });
+})();
+</script>
+{% endblock %}

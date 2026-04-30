@@ -1580,3 +1580,204 @@ async def set_2fa_password_for_account(account, *,
             await client.disconnect()
         except Exception:
             pass
+
+
+# ---------------------------------------------------------------------------
+# Live chat viewer + sender (for the in-app "Telegram-style" chat UI).
+#
+# These two helpers power /accounts/<pk>/live-chats/<chat_id>/. Unlike the
+# bulk runners, they're called inline from a request handler — so they
+# return rendered-friendly dicts instead of the runner status structs, and
+# they only ever touch ONE chat per call (no looping over accounts).
+# ---------------------------------------------------------------------------
+
+async def _resolve_chat_entity(client, chat_id):
+    """Find a dialog whose entity.id matches `chat_id`, or None.
+
+    Iterating dialogs is the most reliable way to resolve an int id to a
+    full entity (Telethon caches the access_hash internally during the
+    walk). Faster paths like `client.get_entity(int)` require the entity
+    to already be in the session's local cache, which fails on a freshly
+    connected client.
+    """
+    async for dialog in client.iter_dialogs():
+        ent = dialog.entity
+        if getattr(ent, 'id', None) == chat_id:
+            return ent, dialog
+    return None, None
+
+
+async def fetch_chat_messages_for_account(account, chat_id, *, limit=40):
+    """Pull the most recent messages from a single chat.
+
+    Returns {success, error, chat, messages}.
+
+    `chat` carries title, kind ('group'|'channel'), username, members,
+    is_creator, is_admin, can_send, has_comments, unread. `has_comments`
+    is True when a broadcast channel has a linked discussion group — the
+    UI uses it to show the "Comment" button on each post.
+    """
+    chat_id = int(chat_id)
+    try:
+        client = await get_client_for_account(account)
+    except Exception as e:
+        return {'success': False, 'error': f"Ulanib bo'lmadi: {e}",
+                'chat': None, 'messages': []}
+    try:
+        me = await client.get_me()
+        if not me:
+            await _mark_session_dead(account.pk)
+            return {'success': False, 'error': "Sessiya yaroqsiz",
+                    'chat': None, 'messages': []}
+
+        entity, dialog = await _resolve_chat_entity(client, chat_id)
+        if entity is None:
+            return {'success': False,
+                    'error': "Chat topilmadi (akkaunt chatdan chiqib ketgan bo'lishi mumkin)",
+                    'chat': None, 'messages': []}
+
+        is_megagroup = bool(getattr(entity, 'megagroup', False))
+        is_broadcast = isinstance(entity, Channel) and not is_megagroup
+        kind = 'channel' if is_broadcast else 'group'
+
+        is_creator = bool(getattr(entity, 'creator', False))
+        is_admin = bool(getattr(entity, 'admin_rights', None))
+        username = getattr(entity, 'username', None)
+        title = getattr(entity, 'title', None) or '<noname>'
+        members = getattr(entity, 'participants_count', None)
+
+        # Broadcast channels: only admins can post directly. Comments are
+        # routed through the linked discussion group so non-admins can
+        # still participate. Detect that link via GetFullChannelRequest.
+        has_comments = False
+        if is_broadcast:
+            try:
+                from telethon.tl.functions.channels import GetFullChannelRequest
+                full = await client(GetFullChannelRequest(entity))
+                has_comments = bool(getattr(full.full_chat, 'linked_chat_id', None))
+            except Exception:
+                pass
+
+        if is_broadcast:
+            can_send = is_creator or is_admin
+        else:
+            can_send = True
+
+        msgs = []
+        async for m in client.iter_messages(entity, limit=limit):
+            sender_name = ''
+            if m.sender:
+                first = getattr(m.sender, 'first_name', '') or ''
+                last = getattr(m.sender, 'last_name', '') or ''
+                sender_name = (first + ' ' + last).strip() or getattr(m.sender, 'username', '') or ''
+            elif getattr(m, 'post', False):
+                sender_name = title
+
+            text = m.message or ''
+            if m.media and not text:
+                text = '[media]'
+
+            replies = 0
+            if getattr(m, 'replies', None):
+                replies = getattr(m.replies, 'replies', 0) or 0
+
+            post_link = ''
+            if is_broadcast and username:
+                post_link = f'https://t.me/{username}/{m.id}'
+
+            msgs.append({
+                'id': m.id,
+                'text': text[:4096],
+                'date_iso': m.date.isoformat() if m.date else '',
+                'date_human': m.date.strftime('%H:%M · %d.%m.%Y') if m.date else '',
+                'out': bool(m.out),
+                'sender': sender_name[:64],
+                'replies': replies,
+                'has_media': bool(m.media),
+                'post_link': post_link,
+            })
+
+        # Telegram returns newest-first; flip so the UI renders top-old,
+        # bottom-new like every chat client.
+        msgs.reverse()
+
+        return {
+            'success': True, 'error': '',
+            'chat': {
+                'id': chat_id,
+                'title': title,
+                'kind': kind,
+                'username': username,
+                'members': members,
+                'is_creator': is_creator,
+                'is_admin': is_admin,
+                'can_send': can_send,
+                'has_comments': has_comments,
+                'unread': getattr(dialog, 'unread_count', 0) if dialog else 0,
+            },
+            'messages': msgs,
+        }
+
+    except SESSION_DEAD_EXCEPTIONS as e:
+        await _mark_session_dead(account.pk)
+        return {'success': False, 'error': "Sessiya chiqarib yuborilgan",
+                'chat': None, 'messages': []}
+    except Exception as e:
+        return {'success': False, 'error': str(e)[:200],
+                'chat': None, 'messages': []}
+    finally:
+        try:
+            await client.disconnect()
+        except Exception:
+            pass
+
+
+async def send_chat_message_for_account(account, chat_id, text, *, comment_to=None):
+    """Post a message to one chat from this account.
+
+    `comment_to` (optional message id) routes the post into the channel's
+    linked discussion thread — i.e. it appears as a comment on that
+    specific channel post. Telethon implements this by silently posting
+    in the linked discussion group with a reply header pointing at the
+    original post.
+    """
+    chat_id = int(chat_id)
+    text = (text or '').strip()
+    if not text:
+        return {'success': False, 'error': "Xabar bo'sh"}
+    if len(text) > 4096:
+        text = text[:4096]
+
+    try:
+        client = await get_client_for_account(account)
+    except Exception as e:
+        return {'success': False, 'error': f"Ulanib bo'lmadi: {e}"}
+    try:
+        me = await client.get_me()
+        if not me:
+            await _mark_session_dead(account.pk)
+            return {'success': False, 'error': "Sessiya yaroqsiz"}
+
+        entity, _ = await _resolve_chat_entity(client, chat_id)
+        if entity is None:
+            return {'success': False, 'error': "Chat topilmadi"}
+
+        kwargs = {}
+        if comment_to is not None:
+            kwargs['comment_to'] = int(comment_to)
+
+        sent = await client.send_message(entity, text, **kwargs)
+        return {'success': True, 'error': '', 'message_id': getattr(sent, 'id', None)}
+
+    except FloodWaitError as e:
+        return {'success': False, 'error': f"FloodWait: {e.seconds}s kutish kerak"}
+    except SESSION_DEAD_EXCEPTIONS as e:
+        await _mark_session_dead(account.pk)
+        return {'success': False, 'error': "Sessiya chiqarib yuborilgan"}
+    except Exception as e:
+        return {'success': False, 'error': str(e)[:200]}
+    finally:
+        try:
+            await client.disconnect()
+        except Exception:
+            pass

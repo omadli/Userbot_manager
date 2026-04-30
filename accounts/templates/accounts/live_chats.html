@@ -66,19 +66,21 @@
                         <tbody>
                             {% for g in groups %}
                             <tr class="group-row" data-title="{{ g.title|lower }}">
-                                <td class="ps-3">
+                                <td class="ps-3" onclick="event.stopPropagation();">
                                     <input type="checkbox" class="form-check-input chat-checkbox group-checkbox" name="chat_ids" value="{{ g.id }}">
                                 </td>
                                 <td>
-                                    <div class="d-flex flex-column">
-                                        <span class="fw-medium text-dark">{{ g.title }}</span>
+                                    <a href="{% url 'accounts:account_chat_detail' account.pk g.id %}"
+                                       class="d-flex flex-column text-decoration-none text-dark"
+                                       title="Chatga kirish">
+                                        <span class="fw-medium">{{ g.title }}</span>
                                         <small class="text-muted">
                                             {% if g.is_creator %}<span class="badge bg-warning text-dark me-1">creator</span>{% endif %}
                                             {% if g.is_admin %}<span class="badge bg-info bg-opacity-10 text-info border me-1">admin</span>{% endif %}
                                             {% if g.username %}@{{ g.username }}{% endif %}
                                             {% if g.unread %}<span class="text-danger">· {{ g.unread }} unread</span>{% endif %}
                                         </small>
-                                    </div>
+                                    </a>
                                 </td>
                                 <td class="text-end pe-3 text-muted small">
                                     {% if g.members %}{{ g.members }}{% else %}—{% endif %}
@@ -121,19 +123,21 @@
                         <tbody>
                             {% for c in channels %}
                             <tr class="channel-row" data-title="{{ c.title|lower }}">
-                                <td class="ps-3">
+                                <td class="ps-3" onclick="event.stopPropagation();">
                                     <input type="checkbox" class="form-check-input chat-checkbox channel-checkbox" name="chat_ids" value="{{ c.id }}">
                                 </td>
                                 <td>
-                                    <div class="d-flex flex-column">
-                                        <span class="fw-medium text-dark">{{ c.title }}</span>
+                                    <a href="{% url 'accounts:account_chat_detail' account.pk c.id %}"
+                                       class="d-flex flex-column text-decoration-none text-dark"
+                                       title="Kanalni ochish">
+                                        <span class="fw-medium">{{ c.title }}</span>
                                         <small class="text-muted">
                                             {% if c.is_creator %}<span class="badge bg-warning text-dark me-1">creator</span>{% endif %}
                                             {% if c.is_admin %}<span class="badge bg-info bg-opacity-10 text-info border me-1">admin</span>{% endif %}
                                             {% if c.username %}@{{ c.username }}{% endif %}
                                             {% if c.unread %}<span class="text-danger">· {{ c.unread }} unread</span>{% endif %}
                                         </small>
-                                    </div>
+                                    </a>
                                 </td>
                                 <td class="text-end pe-3 text-muted small">
                                     {% if c.members %}{{ c.members }}{% else %}—{% endif %}
