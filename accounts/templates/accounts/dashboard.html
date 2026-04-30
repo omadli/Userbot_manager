@@ -317,10 +317,15 @@
                                            class="btn btn-sm btn-primary fw-medium border-0 px-3">
                                             <i class="bi bi-person-gear me-1"></i> Batafsil
                                         </a>
+                                        {# "Qayta kirish" only matters when the session is dead — for healthy
+                                           accounts it's noise. The Aktivmas warning at the top still funnels
+                                           users here when there's a re-login backlog. #}
+                                        {% if not account.is_active %}
                                         <a href="{% url 'accounts:relogin_account' account.pk %}"
                                            class="btn btn-sm btn-info text-white fw-medium border-0 px-3">
                                             <i class="bi bi-arrow-clockwise me-1"></i> Qayta kirish
                                         </a>
+                                        {% endif %}
                                     </div>
                                 </td>
 
