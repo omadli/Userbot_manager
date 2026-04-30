@@ -318,9 +318,9 @@ if not DEBUG:
     SECURE_HSTS_PRELOAD = False
     SILENCED_SYSTEM_CHECKS = ['security.W021']
 
-    # Reverse-proxy CSRF origin trust. Caddy sets X-Forwarded-Proto so the
-    # form-submit Origin matches https://<host>; explicit list also documents
-    # which hosts are expected to POST to us.
+    # Reverse-proxy CSRF origin trust. The host nginx sets X-Forwarded-Proto
+    # so the form-submit Origin matches https://<host>; explicit list also
+    # documents which hosts are expected to POST to us.
     CSRF_TRUSTED_ORIGINS = [
         f"https://{h}" for h in ALLOWED_HOSTS
         if h not in ('localhost', '127.0.0.1', '*')
@@ -333,9 +333,8 @@ if not DEBUG:
         SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
         SECURE_SSL_REDIRECT = True
         # /healthz is hit over plain HTTP from inside the docker network
-        # (Caddy active probe + Docker healthcheck). Without this exemption
-        # Django would 301 it to HTTPS, Caddy would mark the probe as
-        # "out of tolerances" and serve 503 to real users.
+        # (host nginx active probe + Docker healthcheck). Without this
+        # exemption Django would 301 it to HTTPS and the probe would fail.
         SECURE_REDIRECT_EXEMPT = [r'^healthz$']
 
 

@@ -1,22 +1,22 @@
 # Production stack for userbots.omadli.uz
 #
+# Reverse proxy: HOST nginx (NOT in this compose). The web service binds only
+# to 127.0.0.1:${WEB_BIND_PORT}, so this project never grabs port 80/443 on
+# the host — leaving them free for the system nginx to fan out to multiple
+# docker projects on the same VPS.
+#
 # Services:
 #   db      — PostgreSQL 16 with persistent volume
 #   init    — One-shot: migrate + collectstatic, then exits (web waits on it)
-#   web     — Django ASGI (uvicorn) on :8000 (internal)
+#   web     — Django ASGI (uvicorn), exposed only on 127.0.0.1:${WEB_BIND_PORT}
 #   worker  — Background task worker (separate container)
-#   caddy   — Reverse proxy with automatic Let's Encrypt SSL
 #
 # Quick start:
 #   1. cp .env.docker.example .env
 #   2. Edit .env (set SECRET_KEY, DB_ENCRYPTION_KEY, POSTGRES_PASSWORD, ALLOWED_HOSTS)
 #   3. docker compose up -d
 #   4. docker compose exec web python manage.py createsuperuser
-#
-# Subdomain (userbots.omadli.uz):
-#   Point an A record at this server's public IP. Caddy auto-fetches a
-#   certificate from Let's Encrypt on first request — port 80 must be open
-#   for the HTTP-01 challenge.
+#   5. Configure host nginx — see ./nginx/userbots.omadli.uz.conf
 
 # Shared logging block — caps json-file driver at 10 MB × 5 rotations per
 # service so /var/lib/docker/containers doesn't fill the disk over months.
@@ -53,7 +53,7 @@ services:
       db:
         condition: service_healthy
     volumes:
-      - staticfiles:/app/staticfiles
+      - ./staticfiles:/app/staticfiles
       - ./logs:/app/logs
     command: ["init"]
     restart: "no"
@@ -68,9 +68,14 @@ services:
         condition: service_completed_successfully
       db:
         condition: service_healthy
+    # Bind ONLY to localhost — host nginx reaches us via 127.0.0.1, never the
+    # public interface. Override WEB_BIND_PORT in .env if 8000 collides with
+    # another docker project on the same VPS.
+    ports:
+      - "127.0.0.1:${WEB_BIND_PORT:-8000}:8000"
     volumes:
-      - media:/app/media
-      - staticfiles:/app/staticfiles
+      - ./media:/app/media
+      - ./staticfiles:/app/staticfiles
       - ./logs:/app/logs
     command: ["web"]
     healthcheck:
@@ -91,34 +96,11 @@ services:
       db:
         condition: service_healthy
     volumes:
-      - media:/app/media
+      - ./media:/app/media
       - ./logs:/app/logs
     command: ["worker"]
     logging: *default-logging
     # Telethon sessions live in the DB — no extra volume needed.
 
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"   # HTTP/3
-    env_file: .env
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-      # Static + media are served by Caddy directly (faster than going through Django).
-      - staticfiles:/srv/static:ro
-      - media:/srv/media:ro
-    depends_on:
-      - web
-    logging: *default-logging
-
 volumes:
   postgres_data:
-  media:
-  staticfiles:
-  caddy_data:
-  caddy_config:

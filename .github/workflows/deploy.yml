@@ -54,11 +54,13 @@ jobs:
             git fetch --quiet origin
             git reset --hard origin/main
 
-            # The bind-mounted ./logs dir must be writable by the container's
-            # `app` user (UID 1000). On a fresh server Docker creates it as
-            # root and Django crashes opening logs/error.log. Idempotent.
-            mkdir -p logs
-            sudo chown -R 1000:1000 logs
+            # Bind-mounted dirs must be writable by the container's `app`
+            # user (UID 1000). On a fresh server Docker creates them as root
+            # and Django/collectstatic crashes. Idempotent — re-running is
+            # cheap. `staticfiles` and `media` are also bind-mounted so the
+            # host nginx can serve them directly.
+            mkdir -p logs staticfiles media
+            sudo chown -R 1000:1000 logs staticfiles media
 
             echo "===> [2/5] Upserting secrets in .env (other keys preserved)"
             python3 - <<'PY'
@@ -93,7 +95,7 @@ jobs:
             echo "===> [3/5] Building image"
             docker compose build
 
-            echo "===> [4/5] Starting stack (init runs migrations + collectstatic, then web/worker/caddy come up)"
+            echo "===> [4/5] Starting stack (init runs migrations + collectstatic, then web/worker come up)"
             docker compose up -d --remove-orphans
 
             echo "===> [5/5] Health probe"
@@ -109,5 +111,5 @@ jobs:
 
             echo "  ✗ web never reported healthy — recent logs:"
             docker compose ps
-            docker compose logs --tail 80 init web worker caddy
+            docker compose logs --tail 80 init web worker
             exit 1

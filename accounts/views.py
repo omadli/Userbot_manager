@@ -99,7 +99,7 @@ async def profile(request):
 
 
 async def healthz(request):
-    """Liveness/readiness probe for Caddy and Docker healthcheck.
+    """Liveness/readiness probe for host nginx and Docker healthcheck.
 
     Pings the DB with `SELECT 1` and returns 200 on success, 503 otherwise.
     No auth — safe to expose because it returns no app data.

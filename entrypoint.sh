@@ -14,7 +14,7 @@ set -e
 ROLE="${1:-web}"
 shift || true
 
-# Wait until Postgres is ready when DB_ENGINE=postgres. Caddy/web/worker all
+# Wait until Postgres is ready when DB_ENGINE=postgres. web/worker/init all
 # share the same image so any role might boot before the DB is healthy.
 wait_for_postgres() {
     if [ "$DB_ENGINE" = "postgres" ]; then

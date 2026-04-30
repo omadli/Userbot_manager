@@ -1,9 +1,9 @@
-# Local development stack — SQLite, no Caddy, no SSL.
+# Local development stack — SQLite, no reverse proxy, no SSL.
 #
 # Usage:
 #   docker compose -f docker-compose.dev.yml up
 #
-# Visit http://localhost:8000/  (no proxy, Django serves directly).
+# Visit http://localhost:8000/  (Django serves directly).
 # Code is bind-mounted, so saves are reflected immediately. Restart
 # the container to pick up settings changes.
 

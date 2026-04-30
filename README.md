@@ -60,30 +60,35 @@ arxitektura, xavfsizlik qatlamlari va to'liq Docker deploy.
 ## Arxitektura
 
 ```
-                   ┌──────────────┐
-                   │   Caddy      │  443/80 — auto SSL Let's Encrypt
-                   │ reverse-proxy│
-                   └──────┬───────┘
-                          │  http (internal network)
-            ┌─────────────┴─────────────┐
-            │                           │
-     ┌──────▼──────┐             ┌──────▼──────┐
-     │   web       │             │   worker    │
-     │ uvicorn     │             │ run_worker  │
-     │ Django ASGI │             │ asyncio loop│
-     └──────┬──────┘             └──────┬──────┘
-            │                           │
-            └────────────┬──────────────┘
-                         │
-                  ┌──────▼──────┐
-                  │ PostgreSQL  │  ← persistent volume
-                  └─────────────┘
+        ┌──────────────────────────────┐
+        │   HOST nginx (system daemon) │  443/80 — certbot auto SSL
+        │   userbots.omadli.uz → :8000 │  (boshqa subdomenlarni → :8001, :8002, …)
+        └──────────────┬───────────────┘
+                       │  proxy_pass http://127.0.0.1:8000
+            ┌──────────┴──────────┐
+            │   docker compose    │   (faqat 127.0.0.1:8000 ga bind)
+            │                     │
+     ┌──────▼──────┐       ┌──────▼──────┐
+     │   web       │       │   worker    │
+     │ uvicorn     │       │ run_worker  │
+     │ Django ASGI │       │ asyncio loop│
+     └──────┬──────┘       └──────┬──────┘
+            │                     │
+            └──────────┬──────────┘
+                       │
+                ┌──────▼──────┐
+                │ PostgreSQL  │  ← persistent volume (postgres_data)
+                └─────────────┘
 ```
 
-- **web** — Django ASGI server, foydalanuvchi UI va task yaratish
+- **host nginx** — VPS'da systemd servis sifatida ishlaydi, 80/443 ni
+  egallaydi va har qanday docker loyihaga (`userbots`, kelajakdagi
+  subdomenlar) `127.0.0.1:<unique_port>` orqali yo'naltiradi
+- **web** — Django ASGI server, faqat `127.0.0.1:${WEB_BIND_PORT}` ga
+  bind bo'ladi (server'ning public IP'siga emas) — boshqa loyihalar
+  bilan port konflikti yo'q
 - **worker** — `pending` task'larni navbatdan oladi, Telethon bilan ishlaydi
 - **db** — PostgreSQL (prod) yoki SQLite (lokal dev)
-- **caddy** — HTTPS terminator + statik fayllar
 
 ---
 
@@ -131,9 +136,13 @@ cp .env.docker.example .env
 
 docker compose up -d
 docker compose exec web /app/entrypoint.sh manage createsuperuser
-```
 
-Caddy avtomat Let's Encrypt sertifikat oladi.
+# Host nginx + certbot — public domen uchun (bir martalik):
+sudo cp nginx/userbots.omadli.uz.conf /etc/nginx/sites-available/
+sudo ln -sf /etc/nginx/sites-available/userbots.omadli.uz.conf /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d userbots.omadli.uz --redirect
+```
 
 ---
 
@@ -231,7 +240,7 @@ make native-worker
 ## Lokal kompyuterda Docker bilan
 
 Agar siz Docker'da test qilmoqchi bo'lsangiz (production'ga yaqinroq, lekin
-SSL/Caddy'siz):
+nginx/SSL'siz):
 
 ```bash
 cp .env.example .env       # API_ID/API_HASH/SECRET_KEY/DB_ENCRYPTION_KEY to'ldiring
@@ -242,7 +251,7 @@ docker compose -f docker-compose.dev.yml up --build
 docker compose -f docker-compose.dev.yml exec web /app/entrypoint.sh manage createsuperuser
 ```
 
-`http://localhost:8000` — Django o'zi servis qiladi (Caddy'siz).
+`http://localhost:8000` — Django o'zi servis qiladi (proxy'siz).
 
 To'xtatish:
 
@@ -254,13 +263,16 @@ docker compose -f docker-compose.dev.yml down
 
 ## Serverga o'rnatish
 
-> Production deploy `userbots.omadli.uz` subdomain bilan, Caddy auto-SSL bilan.
+> Production deploy `userbots.omadli.uz` subdomain bilan, host nginx + certbot
+> SSL bilan. Bir VPS'da bir nechta docker loyihalarini parallel servis
+> qilish uchun moslangan (har biri o'z 127.0.0.1 portida).
 
 ### Talablar
 
 - VPS (Ubuntu 22.04/24.04, Debian 12, AlmaLinux 9 — har qaysi Docker qo'llaydigan distribution)
 - 1 GB RAM minimum (2 GB tavsiya), 10 GB disk
 - Docker 24+ va Docker Compose v2
+- nginx + certbot (host darajasida — docker'da emas)
 - 80 va 443 portlar **ochiq** (Let's Encrypt HTTP-01 challenge uchun)
 - Domen: `userbots.omadli.uz` → server'ning public IP'siga A record
 
@@ -336,7 +348,7 @@ WEB_WORKERS=2
 > saqlangan Telegram sessiyalari o'qib bo'lmaydigan bo'lib qoladi va siz
 > har akkauntni qaytadan login qilishga majbur bo'lasiz.
 
-### 5. Ishga tushirish
+### 5. Docker stack'ni ishga tushirish
 
 ```bash
 docker compose up -d
@@ -347,31 +359,83 @@ Birinchi marta:
 - Postgres o'zini ishga tushiradi
 - `init` servisi `migrate` + `collectstatic` ni bajarib chiqadi (`Exit 0`)
 - `web` + `worker` ko'tariladi (init muvaffaqiyatli tugagan bo'lsa)
-- Caddy boshlanadi va Let's Encrypt sertifikat oladi (~30 sekund)
+- Web container faqat `127.0.0.1:8000` ga bind bo'ladi (server'ning
+  public IP'siga emas) — public reach hali yo'q
 
-Logni kuzatish:
 ```bash
-docker compose logs -f
-```
-
-Sertifikat olinganini tekshirish:
-```bash
-docker compose logs caddy | grep -i 'certificate'
-```
-
-Health endpoint tekshirish:
-```bash
-curl -s https://userbots.omadli.uz/healthz
+# Web ichkaridan javob beryaptimi tekshirish:
+curl -sf http://127.0.0.1:8000/healthz
 # → {"status":"ok"}
 ```
 
-Production sozlamalarni tekshirish (xato chiqmasligi kerak):
+### 6. Host nginx + SSL (bir martalik)
+
+Bu qadam **server'da systemd nginx**'ni sozlaydi. Birinchi marta
+o'rnatishda; keyin yangi loyihalar qo'shganda qayta ishlatasiz.
+
 ```bash
+# Agar nginx + certbot hali yo'q bo'lsa:
+sudo apt update
+sudo apt install -y nginx certbot python3-certbot-nginx
+
+# Hech bir docker container 80/443 ni egallamasligi shart:
+sudo ss -tlnp | grep -E ':80|:443'
+# → faqat `nginx` chiqishi kerak
+
+# Loyihaning nginx config'ini joyiga qo'yish:
+sudo cp ~/apps/userbot-manager/nginx/userbots.omadli.uz.conf \
+        /etc/nginx/sites-available/
+sudo ln -sf /etc/nginx/sites-available/userbots.omadli.uz.conf \
+            /etc/nginx/sites-enabled/
+
+# Welcome page'ni o'chirish (bir marta):
+sudo rm -f /etc/nginx/sites-enabled/default
+
+# Config'da APP_ROOT yo'lini tekshiring (default: /home/ubuntu/apps/userbot-manager).
+# Validate + reload:
+sudo nginx -t && sudo systemctl reload nginx
+
+# Let's Encrypt sertifikat (certbot fayl ichini avtomat tahrirlaydi —
+# 443 listener va sertifikat yo'llarini qo'shadi):
+sudo certbot --nginx -d userbots.omadli.uz --redirect
+
+# Avtomat-renewal certbot.timer orqali sozlangan:
+sudo systemctl list-timers | grep certbot
+```
+
+Tekshirish:
+```bash
+curl -s https://userbots.omadli.uz/healthz
+# → {"status":"ok"}
+
 make check-deploy
 # → System check identified no issues (0 silenced).
 ```
 
-### 6. Birinchi admin foydalanuvchi
+### 7. Bitta VPS'da bir nechta docker loyihalarini parallel ishlatish
+
+Asosiy g'oya: **har loyiha o'z `127.0.0.1:<unique_port>`'iga bind bo'ladi**,
+public 80/443 esa **doim host nginx**'da qoladi.
+
+Yangi loyiha qo'shish:
+1. Loyihaning `docker-compose.yml`'ida `web` servisi `127.0.0.1:8001:8000`
+   (yoki `8002`, `8003`...) ga bind bo'lsin — har biri unique localhost port.
+2. Yangi nginx server bloki yarating (shu repo'dagi
+   `nginx/userbots.omadli.uz.conf`'ni shablon sifatida ishlatib):
+   ```bash
+   sudo cp /etc/nginx/sites-available/userbots.omadli.uz.conf \
+           /etc/nginx/sites-available/blog.example.uz.conf
+   sudo nano /etc/nginx/sites-available/blog.example.uz.conf
+   # `server_name`'ni o'zgartiring + barcha `proxy_pass`'larni 127.0.0.1:8001 ga
+   sudo ln -sf /etc/nginx/sites-available/blog.example.uz.conf \
+               /etc/nginx/sites-enabled/
+   sudo nginx -t && sudo systemctl reload nginx
+   sudo certbot --nginx -d blog.example.uz --redirect
+   ```
+3. Tamom — ikkala loyiha 80/443 ni baham ko'rmaydi, host nginx
+   `Host:` headeri bo'yicha to'g'ri konteynerga yo'naltiradi.
+
+### 8. Birinchi admin foydalanuvchi
 
 ```bash
 docker compose exec web /app/entrypoint.sh manage createsuperuser
@@ -385,7 +449,7 @@ So'raydi:
 Endi `https://userbots.omadli.uz/admin/` ga kirib, qo'shimcha foydalanuvchilar yarating
 (har bir foydalanuvchi o'z akkauntlarini ko'radi — multi-tenant).
 
-### 7. Yangi update qilish
+### 9. Yangi update qilish
 
 ```bash
 cd ~/apps/userbot-manager
@@ -423,8 +487,9 @@ Container stdout (Docker'da, json-file driver, `max-size=10m × max-file=5` bila
 make logs                          # web + worker
 docker compose logs -f web         # faqat web
 docker compose logs -f worker      # faqat worker
-docker compose logs -f caddy       # caddy / SSL
 docker compose logs --tail=100 db  # postgres
+sudo journalctl -u nginx -f        # host nginx (proxy/SSL)
+sudo tail -f /var/log/nginx/access.log /var/log/nginx/error.log
 ```
 
 Django LOGGING fayllar (host'da, `./logs/`):
@@ -498,7 +563,7 @@ Har akkaunt o'z `api_id`/`api_hash`'ini ham qo'shishi mumkin (Account model'da, 
 | `SECRET_KEY` | yo'q (crash bo'ladi) | Django sessiya/CSRF/passwords uchun |
 | `DEBUG` | `False` | Production'da hech qachon `True` qilmang |
 | `ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated |
-| `SECURE_BEHIND_PROXY` | `False` | Caddy/nginx orqasidasiz — `True` qiling |
+| `SECURE_BEHIND_PROXY` | `False` | nginx orqasidasiz — `True` qiling |
 
 ### Database
 
@@ -517,11 +582,12 @@ Har akkaunt o'z `api_id`/`api_hash`'ini ham qo'shishi mumkin (Account model'da, 
 |----------|---------|--------|
 | `DB_ENCRYPTION_KEY` | SECRET_KEY'dan derive | Fernet kalit. **Production'da alohida belgilang.** |
 
-### Caddy / Site
+### Site / Proxy
 
 | Variable | Default | Tavsif |
 |----------|---------|--------|
-| `SITE_DOMAIN` | `userbots.omadli.uz` | Caddy shu domenda SSL oladi |
+| `SITE_DOMAIN` | `userbots.omadli.uz` | Public domen — host nginx + certbot ishlatadi |
+| `WEB_BIND_PORT` | `8000` | Web container `127.0.0.1:<port>` ga bind bo'ladi (boshqa loyihalar bilan unique bo'lsin) |
 | `WEB_WORKERS` | `2` | uvicorn worker soni |
 | `LOG_LEVEL` | `INFO` | Root logger darajasi (`./logs/app.log`) |
 
@@ -626,11 +692,14 @@ Telethon `pyaes`'ga avtomat fallback qiladi. Tezroq xohlasangiz Linux/WSL'da
 make secrets
 ```
 
-### Caddy SSL olmayapti ("acme: error")
+### certbot SSL olmayapti ("acme: error")
 
 - DNS tarqalmagan: `dig +short userbots.omadli.uz` server IP qaytarishi kerak
 - Port 80 yopiq: `sudo ufw allow 80/tcp; sudo ufw allow 443/tcp`
-- Boshqa servis 80'ni ishlatmoqda: `sudo lsof -i :80`
+- Boshqa servis 80'ni ishlatmoqda (eski Caddy konteyneri qoldigan, va h.k.):
+  `sudo ss -tlnp | grep ':80 '` — natija faqat `nginx` bo'lishi kerak
+- Eski Caddy o'chirilmagan bo'lsa: `docker compose down caddy 2>/dev/null;
+  docker rm -f $(docker ps -aq --filter name=caddy) 2>/dev/null`
 
 ### "Sessiya chiqarib yuborilgan"
 
@@ -699,9 +768,9 @@ journalctl --vacuum-time=7d      # tizim loglarini kichraytirish
 ├── config/                 # Django settings + URL
 ├── templates/              # Bootstrap 5 + Chart.js UI
 ├── Dockerfile              # Multi-stage Linux image
-├── docker-compose.yml      # Production (web+worker+db+caddy)
+├── docker-compose.yml      # Production (web+worker+db) — host nginx alohida
 ├── docker-compose.dev.yml  # Lokal Docker
-├── Caddyfile               # Reverse proxy + SSL
+├── nginx/                  # Host nginx server bloklari (server'ga deploy qilinadi)
 ├── entrypoint.sh           # Container startup
 ├── Makefile                # Convenience targets
 ├── requirements.txt        # Python bog'liqliklar

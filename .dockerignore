@@ -52,7 +52,9 @@ Thumbs.db
 docker-compose*.yml
 Dockerfile
 .dockerignore
-Caddyfile
+
+# Host nginx config — deployed to the server's /etc/nginx, not into the image.
+nginx/
 
 # Tests / docs / planning files.
 **/tests.py

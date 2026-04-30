@@ -17,7 +17,7 @@ help: ## Show this help
 
 # ─── Production (Docker) ─────────────────────────────────────────────────────
 
-up: ## Start prod stack (web + worker + db + caddy)
+up: ## Start prod stack (web + worker + db) — host nginx is separate
 	$(COMPOSE) up -d
 
 down: ## Stop prod stack (data preserved in volumes)
@@ -87,7 +87,7 @@ restore: ## Restore from backups/<timestamp>/ — set TS=YYYYMMDD_HHMMSS
 
 # ─── Local Docker dev ────────────────────────────────────────────────────────
 
-dev: ## Start dev stack (sqlite, no caddy, port 8000)
+dev: ## Start dev stack (sqlite, no proxy, port 8000)
 	$(COMPOSE) -f docker-compose.dev.yml up
 
 dev-down: ## Stop dev stack
