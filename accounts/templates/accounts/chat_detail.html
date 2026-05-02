@@ -7,6 +7,10 @@
     <h2 class="fw-bold mb-0 d-flex align-items-center gap-2">
         {% if chat.kind == 'channel' %}
             <i class="bi bi-megaphone-fill text-primary"></i>
+        {% elif chat.kind == 'bot' %}
+            <i class="bi bi-robot text-secondary"></i>
+        {% elif chat.kind == 'dm' %}
+            <i class="bi bi-person-fill text-success"></i>
         {% else %}
             <i class="bi bi-people-fill text-info"></i>
         {% endif %}
@@ -18,9 +22,16 @@
     {% if chat.is_creator %}<span class="badge bg-warning text-dark">creator</span>{% endif %}
     {% if chat.is_admin %}<span class="badge bg-info bg-opacity-10 text-info border">admin</span>{% endif %}
     {% if chat.members %}<span class="badge bg-light text-dark border">{{ chat.members }} a'zo</span>{% endif %}
-    <span class="ms-auto text-muted small">
-        {{ account.first_name|default:account.phone_number }} dan
-    </span>
+
+    <div class="ms-auto d-flex align-items-center gap-2">
+        <span class="text-muted small d-none d-md-inline">{{ account.first_name|default:account.phone_number }} dan</span>
+        <span id="pollStatus" class="badge bg-success bg-opacity-10 text-success border" title="Avtomatik yangilanish">
+            <i class="bi bi-arrow-repeat"></i> Auto
+        </span>
+        <button type="button" id="refreshBtn" class="btn btn-sm btn-outline-primary rounded-pill px-3" title="Hozir yangilash">
+            <i class="bi bi-arrow-clockwise"></i>
+        </button>
+    </div>
 </div>
 
 <div class="card shadow-sm border-0 rounded-4">
@@ -28,69 +39,35 @@
         <div id="messageList"
              class="chat-messages p-3 p-md-4"
              style="max-height: 65vh; overflow-y: auto; background-color: #f7fafc;">
-            {% if messages_list %}
-                {% for m in messages_list %}
-                <div class="msg-bubble mb-2 d-flex {% if m.out %}justify-content-end{% endif %}">
-                    <div class="msg-content {% if m.out %}msg-out{% else %}msg-in{% endif %} px-3 py-2 rounded-3 shadow-sm"
-                         style="max-width: 75%;">
-                        {% if m.sender and not m.out %}
-                            <div class="small fw-bold text-primary mb-1">{{ m.sender }}</div>
-                        {% endif %}
-                        {% if m.text %}
-                            <div class="msg-text" style="white-space: pre-wrap; word-break: break-word;">{{ m.text }}</div>
-                        {% endif %}
-                        {% if m.has_media and m.text == '[media]' %}
-                            <div class="text-muted fst-italic"><i class="bi bi-image me-1"></i>Media (preview ko'rinmaydi)</div>
-                        {% endif %}
-                        <div class="d-flex align-items-center gap-2 mt-1">
-                            <small class="msg-time">{{ m.date_human }}</small>
-                            {% if chat.kind == 'channel' and m.replies %}
-                                <small class="text-muted"><i class="bi bi-chat-text"></i> {{ m.replies }}</small>
-                            {% endif %}
-                            {% if m.post_link %}
-                                <a href="{{ m.post_link }}" target="_blank" class="text-decoration-none small text-muted" title="Telegram'da ochish">
-                                    <i class="bi bi-box-arrow-up-right"></i>
-                                </a>
-                            {% endif %}
-                            {% if chat.kind == 'channel' and chat.has_comments %}
-                                <button type="button" class="btn btn-sm btn-link text-decoration-none p-0 ms-auto comment-toggle"
-                                        data-msg-id="{{ m.id }}">
-                                    <i class="bi bi-chat-left-text"></i> Sharh
-                                </button>
-                            {% endif %}
-                        </div>
-                        {% if chat.kind == 'channel' and chat.has_comments %}
-                        <form method="post" class="comment-form mt-2 d-none" action="{% url 'accounts:account_chat_detail' account.pk chat.id %}">
-                            {% csrf_token %}
-                            <input type="hidden" name="comment_to" value="{{ m.id }}">
-                            <div class="input-group input-group-sm">
-                                <textarea name="text" class="form-control" rows="2" placeholder="Sharh yozing..." maxlength="4096" required></textarea>
-                                <button type="submit" class="btn btn-primary">
-                                    <i class="bi bi-send-fill"></i>
-                                </button>
-                            </div>
-                        </form>
-                        {% endif %}
-                    </div>
-                </div>
-                {% endfor %}
-            {% else %}
-                <div class="text-center text-muted py-5">
-                    <i class="bi bi-chat-dots fs-1 opacity-25 d-block mb-2"></i>
-                    Xabar yo'q
-                </div>
-            {% endif %}
+            <div class="text-center text-muted py-5" id="emptyState">
+                <i class="bi bi-chat-dots fs-1 opacity-25 d-block mb-2"></i>
+                <div class="spinner-border spinner-border-sm text-secondary opacity-50" role="status"></div>
+                <div class="mt-2">Yuklanmoqda…</div>
+            </div>
         </div>
+        {{ initial_messages_json|json_script:"initialMessagesData" }}
 
         {% if chat.can_send %}
+        <div id="replyRibbon" class="border-top px-3 py-2 bg-light d-none align-items-center gap-2">
+            <i class="bi bi-reply-fill text-primary"></i>
+            <div class="flex-grow-1 small text-truncate">
+                <span class="fw-bold text-primary" id="replyToSender">—</span>
+                <span class="text-muted ms-1" id="replyToText">—</span>
+            </div>
+            <button type="button" id="cancelReply" class="btn btn-sm btn-link text-muted p-0">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </div>
         <form method="post" action="{% url 'accounts:account_chat_detail' account.pk chat.id %}"
               class="border-top p-3 bg-white" id="sendForm">
             {% csrf_token %}
+            <input type="hidden" name="op" value="send">
+            <input type="hidden" name="reply_to" id="replyToId" value="">
             <div class="input-group">
                 <textarea name="text"
                           class="form-control rounded-start-4 border-0 bg-light"
                           rows="2"
-                          placeholder="{% if chat.kind == 'channel' %}Postga... (faqat admin){% else %}Xabar yozing...{% endif %}"
+                          placeholder="{% if chat.kind == 'channel' %}Postga... (faqat admin){% elif chat.kind == 'bot' %}Botga xabar yoki /buyruq{% else %}Xabar yozing...{% endif %}"
                           maxlength="4096"
                           required></textarea>
                 <button type="submit" class="btn btn-primary rounded-end-4 px-4 fw-bold">
@@ -99,65 +76,565 @@
             </div>
             <div class="form-text small mt-2">
                 <i class="bi bi-info-circle me-1"></i>
-                Xabar <strong>{{ account.first_name|default:account.phone_number }}</strong> akkauntidan yuboriladi.
-                Ctrl+Enter — tezkor yuborish.
+                {{ account.first_name|default:account.phone_number }} akkauntidan. Ctrl+Enter — yuborish.
             </div>
         </form>
         {% elif chat.kind == 'channel' and chat.has_comments %}
         <div class="border-top p-3 bg-light text-center text-muted small">
             <i class="bi bi-info-circle me-1"></i>
-            Bu kanalga to'g'ridan-to'g'ri post yuborolmaysiz (admin emassiz),
-            lekin har bir post tagidagi <strong>"Sharh"</strong> tugmasi orqali izoh qoldira olasiz.
+            Bu kanalga to'g'ridan-to'g'ri post yuborolmaysiz, lekin har bir post tagidagi <strong>"Sharh"</strong> tugmasi orqali izoh qoldira olasiz.
         </div>
         {% else %}
         <div class="border-top p-3 bg-light text-center text-muted small">
-            <i class="bi bi-lock me-1"></i>Sizda bu kanalga post huquqi yo'q
+            <i class="bi bi-lock me-1"></i>Sizda bu chatga xabar yuborish huquqi yo'q
         </div>
         {% endif %}
     </div>
 </div>
 
+{# Hidden forms for op=react / op=vote / op=click — JS submits them. #}
+<form id="reactForm" method="post" action="{% url 'accounts:account_chat_detail' account.pk chat.id %}" class="d-none">
+    {% csrf_token %}
+    <input type="hidden" name="op" value="react">
+    <input type="hidden" name="msg_id" id="reactMsgId">
+    <input type="hidden" name="emoji" id="reactEmoji">
+</form>
+<form id="voteForm" method="post" action="{% url 'accounts:account_chat_detail' account.pk chat.id %}" class="d-none">
+    {% csrf_token %}
+    <input type="hidden" name="op" value="vote">
+    <input type="hidden" name="msg_id" id="voteMsgId">
+    <div id="voteOptionsHolder"></div>
+</form>
+<form id="clickForm" method="post" action="{% url 'accounts:account_chat_detail' account.pk chat.id %}" class="d-none">
+    {% csrf_token %}
+    <input type="hidden" name="op" value="click">
+    <input type="hidden" name="msg_id" id="clickMsgId">
+    <input type="hidden" name="row" id="clickRow">
+    <input type="hidden" name="col" id="clickCol">
+</form>
+
 <style>
-.msg-content {
-    background: #ffffff;
-    border: 1px solid #e5e7eb;
-}
-.msg-content.msg-out {
-    background: #dcf8c6;
-    border-color: #c5e1a5;
-}
-.msg-time {
-    color: #94a3b8;
-    font-size: 0.72rem;
-}
 .chat-messages {
     background-image:
         radial-gradient(circle at 20% 20%, rgba(35, 182, 233, 0.04) 0, transparent 40%),
         radial-gradient(circle at 80% 70%, rgba(59, 130, 246, 0.04) 0, transparent 40%);
 }
+.msg-bubble { display: flex; margin-bottom: 8px; }
+.msg-bubble.out { justify-content: flex-end; }
+.msg-content {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    padding: 8px 12px;
+    max-width: 75%;
+    box-shadow: 0 1px 1px rgba(0,0,0,0.04);
+    position: relative;
+}
+.msg-content.out {
+    background: #dcf8c6;
+    border-color: #c5e1a5;
+}
+.msg-content .msg-text { white-space: pre-wrap; word-break: break-word; }
+.msg-time { color: #94a3b8; font-size: 0.72rem; }
+.msg-sender { font-weight: 600; font-size: 0.78rem; color: #2563eb; margin-bottom: 2px; }
+.reply-quote {
+    border-left: 3px solid #2563eb;
+    padding: 4px 8px;
+    margin-bottom: 6px;
+    background: rgba(37, 99, 235, 0.08);
+    border-radius: 6px;
+    font-size: 0.82rem;
+    cursor: pointer;
+}
+.reply-quote .reply-sender { font-weight: 600; color: #2563eb; }
+.reply-quote .reply-text { color: #6b7280; }
+.media-thumb {
+    max-width: 100%; max-height: 240px; border-radius: 10px;
+    cursor: pointer; display: block;
+    background: #f1f5f9;
+}
+.media-placeholder {
+    background: #f1f5f9; border-radius: 10px; padding: 16px;
+    color: #64748b; text-align: center; font-size: 0.85rem;
+    border: 1px dashed #cbd5e1; cursor: pointer;
+}
+.poll-box {
+    background: rgba(255,255,255,0.6); border: 1px solid #e5e7eb;
+    border-radius: 10px; padding: 8px; margin-top: 4px;
+}
+.poll-question { font-weight: 600; margin-bottom: 6px; }
+.poll-option {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px; border-radius: 8px; cursor: pointer;
+    margin-bottom: 4px; background: #f8fafc;
+    transition: background 0.15s;
+}
+.poll-option:hover { background: #e0f2fe; }
+.poll-option.chosen { background: #dbeafe; border: 1px solid #93c5fd; }
+.poll-option.correct { background: #dcfce7; border: 1px solid #86efac; }
+.poll-bar {
+    flex-grow: 1; height: 6px; background: #e5e7eb; border-radius: 3px; overflow: hidden;
+}
+.poll-bar > span { display: block; height: 100%; background: #3b82f6; }
+.reaction-strip { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.reaction-pill {
+    background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.15);
+    padding: 1px 8px; border-radius: 12px; font-size: 0.78rem;
+    cursor: pointer; transition: background 0.15s;
+}
+.reaction-pill.chosen { background: rgba(59, 130, 246, 0.25); border-color: rgba(59, 130, 246, 0.5); }
+.reaction-pill:hover { background: rgba(59, 130, 246, 0.18); }
+.bot-keyboard { margin-top: 6px; }
+.bot-row { display: flex; gap: 4px; margin-bottom: 4px; }
+.bot-btn {
+    flex: 1; padding: 6px 10px; font-size: 0.85rem;
+    border-radius: 8px; border: 1px solid #cbd5e1;
+    background: #fff; cursor: pointer;
+    text-align: center; color: #1e293b;
+    transition: background 0.15s;
+}
+.bot-btn:hover { background: #f1f5f9; }
+.bot-btn.url { color: #2563eb; }
+.msg-tools {
+    display: none;
+    position: absolute; top: -10px; right: 8px;
+    background: #fff; border: 1px solid #e5e7eb;
+    border-radius: 16px; padding: 2px 4px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+    gap: 2px;
+}
+.msg-content:hover .msg-tools { display: flex; }
+.msg-tools button {
+    border: 0; background: transparent; padding: 2px 6px; border-radius: 12px;
+    font-size: 0.85rem; cursor: pointer;
+}
+.msg-tools button:hover { background: #f1f5f9; }
+.reaction-picker {
+    position: absolute; top: -40px; right: 8px;
+    background: #fff; border: 1px solid #e5e7eb;
+    border-radius: 20px; padding: 4px 8px; gap: 2px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    display: none; z-index: 5;
+}
+.reaction-picker.open { display: flex; }
+.reaction-picker button {
+    border: 0; background: transparent; padding: 2px 6px;
+    font-size: 1.2rem; cursor: pointer; border-radius: 12px;
+}
+.reaction-picker button:hover { transform: scale(1.2); }
 @media (max-width: 575.98px) {
-    .msg-content { max-width: 90% !important; font-size: 0.92rem; }
+    .msg-content { max-width: 90%; font-size: 0.92rem; }
 }
 </style>
 
+<template id="msgTemplate">
+    <div class="msg-bubble" data-msg-id="">
+        <div class="msg-content">
+            <div class="msg-sender" data-field="sender"></div>
+            <div class="reply-quote" data-field="reply" style="display:none;">
+                <div class="reply-sender" data-field="reply-sender"></div>
+                <div class="reply-text" data-field="reply-text"></div>
+            </div>
+            <div class="msg-text" data-field="text"></div>
+            <div data-field="media"></div>
+            <div data-field="poll"></div>
+            <div class="reaction-strip" data-field="reactions"></div>
+            <div class="bot-keyboard" data-field="buttons"></div>
+            <div class="d-flex align-items-center gap-2 mt-1">
+                <small class="msg-time" data-field="time"></small>
+                <small class="text-muted" data-field="extra"></small>
+            </div>
+            <div class="msg-tools">
+                <button type="button" data-action="reply" title="Javob berish"><i class="bi bi-reply"></i></button>
+                <button type="button" data-action="react" title="Reaksiya"><i class="bi bi-emoji-smile"></i></button>
+            </div>
+            <div class="reaction-picker">
+                <button type="button" data-emoji="👍">👍</button>
+                <button type="button" data-emoji="❤️">❤️</button>
+                <button type="button" data-emoji="🔥">🔥</button>
+                <button type="button" data-emoji="😂">😂</button>
+                <button type="button" data-emoji="😢">😢</button>
+                <button type="button" data-emoji="🎉">🎉</button>
+                <button type="button" data-emoji="👎">👎</button>
+                <button type="button" data-emoji="">✕</button>
+            </div>
+        </div>
+    </div>
+</template>
+
 <script>
 (function() {
-    const list = document.getElementById('messageList');
-    if (list) list.scrollTop = list.scrollHeight;
+    const ACCOUNT_PK = {{ account.pk }};
+    const CHAT_ID = {{ chat.id }};
+    const POLL_URL = "{% url 'accounts:account_chat_poll' account.pk chat.id %}";
+    const MEDIA_URL_BASE = "/accounts/detail/{{ account.pk }}/live-chats/{{ chat.id }}/media/";
+    const CHAT_KIND = "{{ chat.kind }}";
+    const HAS_COMMENTS = {{ chat.has_comments|yesno:"true,false" }};
+    const POLL_INTERVAL = 5000;
 
-    document.querySelectorAll('.comment-toggle').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const bubble = btn.closest('.msg-content');
-            const form = bubble && bubble.querySelector('.comment-form');
-            if (!form) return;
-            const wasHidden = form.classList.contains('d-none');
-            form.classList.toggle('d-none');
-            if (wasHidden) {
-                const ta = form.querySelector('textarea');
-                if (ta) setTimeout(() => ta.focus(), 50);
+    const list = document.getElementById('messageList');
+    const tmpl = document.getElementById('msgTemplate');
+    const emptyState = document.getElementById('emptyState');
+    const refreshBtn = document.getElementById('refreshBtn');
+    const pollStatus = document.getElementById('pollStatus');
+
+    const replyRibbon = document.getElementById('replyRibbon');
+    const replyToId = document.getElementById('replyToId');
+    const replyToSender = document.getElementById('replyToSender');
+    const replyToText = document.getElementById('replyToText');
+    const cancelReplyBtn = document.getElementById('cancelReply');
+
+    const renderedIds = new Set();
+    let lastSeenId = 0;
+    let pollTimer = null;
+    let pollInflight = false;
+    let stopped = false;
+
+    function csrf() {
+        const m = document.querySelector('input[name=csrfmiddlewaretoken]');
+        return m ? m.value : '';
+    }
+
+    function escapeHtml(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function autolinkText(s) {
+        const safe = escapeHtml(s);
+        return safe.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener" class="text-decoration-none">$1</a>');
+    }
+
+    function renderMedia(m) {
+        if (!m.media) return '';
+        const media = m.media;
+        if (media.kind === 'photo' || media.kind === 'sticker') {
+            const url = `${MEDIA_URL_BASE}${m.id}/?thumb=1`;
+            return `<img src="${url}" class="media-thumb" loading="lazy" alt="photo">`;
+        }
+        if (media.kind === 'video' || media.kind === 'video_round' || media.kind === 'gif') {
+            const dur = media.duration ? `${Math.floor(media.duration/60)}:${String(media.duration%60).padStart(2,'0')}` : '';
+            const url = `${MEDIA_URL_BASE}${m.id}/?thumb=1`;
+            const icon = media.kind === 'gif' ? 'bi-gift' : 'bi-camera-video-fill';
+            return `<div class="position-relative">
+                <img src="${url}" class="media-thumb" loading="lazy" alt="video">
+                <span class="position-absolute top-50 start-50 translate-middle bg-dark bg-opacity-75 text-white rounded-circle p-3">
+                    <i class="bi ${icon}"></i>
+                </span>
+                ${dur ? `<span class="position-absolute bottom-0 end-0 m-2 badge bg-dark bg-opacity-75">${dur}</span>` : ''}
+            </div>`;
+        }
+        if (media.kind === 'voice' || media.kind === 'audio') {
+            const dur = media.duration ? `${Math.floor(media.duration/60)}:${String(media.duration%60).padStart(2,'0')}` : '';
+            return `<div class="media-placeholder"><i class="bi bi-mic-fill me-1"></i>${media.kind === 'voice' ? "Ovozli xabar" : "Audio"}${dur ? ` · ${dur}` : ''}</div>`;
+        }
+        if (media.kind === 'document') {
+            const sz = media.file_size ? ` · ${(media.file_size/1024).toFixed(0)} KB` : '';
+            return `<div class="media-placeholder"><i class="bi bi-file-earmark me-1"></i>${escapeHtml(media.mime || 'fayl')}${sz}</div>`;
+        }
+        if (media.kind === 'webpage') {
+            const thumb = media.has_thumb ? `<img src="${MEDIA_URL_BASE}${m.id}/?thumb=1" class="media-thumb" loading="lazy" alt="">` : '';
+            return `<a href="${escapeHtml(media.url)}" target="_blank" rel="noopener" class="d-block text-decoration-none text-dark mt-1">
+                <div class="border-start border-primary border-3 ps-2">
+                    ${media.site_name ? `<div class="small text-primary">${escapeHtml(media.site_name)}</div>` : ''}
+                    ${media.title ? `<div class="fw-medium">${escapeHtml(media.title)}</div>` : ''}
+                    ${media.description ? `<div class="small text-muted">${escapeHtml(media.description)}</div>` : ''}
+                    ${thumb}
+                </div>
+            </a>`;
+        }
+        if (media.kind === 'contact') {
+            return `<div class="media-placeholder"><i class="bi bi-person-vcard me-1"></i>${escapeHtml(media.first_name || '')} ${escapeHtml(media.last_name || '')} · ${escapeHtml(media.phone_number || '')}</div>`;
+        }
+        if (media.kind === 'geo') {
+            return `<div class="media-placeholder"><i class="bi bi-geo-alt-fill me-1"></i>Geo: ${media.lat}, ${media.long}</div>`;
+        }
+        return '';
+    }
+
+    function renderPoll(m) {
+        if (!m.poll) return '';
+        const p = m.poll;
+        const total = p.total_voters || 0;
+        const showResults = p.voted || p.closed;
+        const optionsHtml = p.options.map(o => {
+            const pct = total > 0 ? Math.round(100 * o.voters / total) : 0;
+            const cls = (o.chosen ? ' chosen' : '') + (showResults && o.correct ? ' correct' : '');
+            return `<div class="poll-option${cls}" data-poll-msg="${m.id}" data-poll-opt="${o.index}" data-poll-multi="${p.multiple_choice}">
+                <input type="${p.multiple_choice ? 'checkbox' : 'radio'}" name="poll-${m.id}" ${o.chosen ? 'checked' : ''} ${p.closed || (p.voted && !p.multiple_choice) ? 'disabled' : ''}>
+                <div class="flex-grow-1">
+                    <div class="small">${escapeHtml(o.text)}</div>
+                    ${showResults ? `<div class="poll-bar"><span style="width:${pct}%"></span></div>` : ''}
+                </div>
+                ${showResults ? `<div class="small text-muted">${pct}%</div>` : ''}
+            </div>`;
+        }).join('');
+        const submitBtn = (p.multiple_choice && !p.voted && !p.closed)
+            ? `<button type="button" class="btn btn-sm btn-primary rounded-pill mt-2 w-100 poll-submit" data-poll-msg="${m.id}">Ovoz berish</button>`
+            : '';
+        return `<div class="poll-box">
+            <div class="poll-question">${p.quiz ? '🎯 ' : '📊 '}${escapeHtml(p.question)}</div>
+            ${optionsHtml}
+            ${submitBtn}
+            <div class="small text-muted mt-1">${total} ovoz${p.closed ? ' · yopilgan' : ''}${p.multiple_choice ? ' · ko\'p tanlov' : ''}</div>
+        </div>`;
+    }
+
+    function renderReactions(m) {
+        if (!m.reactions || !m.reactions.length) return '';
+        return m.reactions.map(r => {
+            const cls = r.chosen ? ' chosen' : '';
+            return `<span class="reaction-pill${cls}" data-react-msg="${m.id}" data-react-emoji="${escapeHtml(r.emoji)}">
+                ${escapeHtml(r.emoji)} ${r.count}
+            </span>`;
+        }).join('');
+    }
+
+    function renderButtons(m) {
+        if (!m.buttons || !m.buttons.length) return '';
+        return m.buttons.map(row => {
+            const btns = row.map(b => {
+                if (b.type === 'url' && b.url) {
+                    return `<a href="${escapeHtml(b.url)}" target="_blank" rel="noopener" class="bot-btn url text-decoration-none">${escapeHtml(b.text)}</a>`;
+                }
+                return `<button type="button" class="bot-btn" data-btn-msg="${m.id}" data-btn-row="${b.row}" data-btn-col="${b.col}">${escapeHtml(b.text)}</button>`;
+            }).join('');
+            return `<div class="bot-row">${btns}</div>`;
+        }).join('');
+    }
+
+    function renderMessage(m) {
+        if (renderedIds.has(m.id)) return null;
+        renderedIds.add(m.id);
+        if (m.id > lastSeenId) lastSeenId = m.id;
+
+        const node = tmpl.content.firstElementChild.cloneNode(true);
+        node.dataset.msgId = m.id;
+        if (m.out) {
+            node.classList.add('out');
+            node.querySelector('.msg-content').classList.add('out');
+        }
+
+        const senderEl = node.querySelector('[data-field="sender"]');
+        if (m.sender && !m.out) {
+            senderEl.textContent = m.sender;
+        } else {
+            senderEl.style.display = 'none';
+        }
+
+        const replyEl = node.querySelector('[data-field="reply"]');
+        if (m.reply_to) {
+            replyEl.style.display = '';
+            replyEl.querySelector('[data-field="reply-sender"]').textContent = m.reply_to.sender || 'Javob';
+            replyEl.querySelector('[data-field="reply-text"]').textContent = (m.reply_to.text || '').slice(0, 100) || 'xabar';
+            replyEl.dataset.targetId = m.reply_to.id;
+        }
+
+        const textEl = node.querySelector('[data-field="text"]');
+        if (m.text) {
+            textEl.innerHTML = autolinkText(m.text);
+        } else {
+            textEl.style.display = 'none';
+        }
+
+        node.querySelector('[data-field="media"]').innerHTML = renderMedia(m);
+        node.querySelector('[data-field="poll"]').innerHTML = renderPoll(m);
+        node.querySelector('[data-field="reactions"]').innerHTML = renderReactions(m);
+        node.querySelector('[data-field="buttons"]').innerHTML = renderButtons(m);
+
+        node.querySelector('[data-field="time"]').textContent = m.date_human || '';
+        const extras = [];
+        if (m.edited) extras.push('tahrirlangan');
+        if (m.via_bot) extras.push('@' + m.via_bot);
+        if (CHAT_KIND === 'channel' && m.replies) extras.push(`💬 ${m.replies}`);
+        if (m.post_link) extras.push(`<a href="${escapeHtml(m.post_link)}" target="_blank" class="text-decoration-none">↗</a>`);
+        node.querySelector('[data-field="extra"]').innerHTML = extras.join(' · ');
+
+        return node;
+    }
+
+    function appendMessages(msgs) {
+        if (!msgs || !msgs.length) return false;
+        const wasNearBottom = (list.scrollTop + list.clientHeight) >= (list.scrollHeight - 80);
+        let added = 0;
+        const frag = document.createDocumentFragment();
+        for (const m of msgs) {
+            const node = renderMessage(m);
+            if (node) {
+                frag.appendChild(node);
+                added++;
             }
-        });
+        }
+        if (added > 0) {
+            list.appendChild(frag);
+            if (emptyState) emptyState.style.display = 'none';
+            if (wasNearBottom) list.scrollTop = list.scrollHeight;
+        }
+        return added > 0;
+    }
+
+    function replaceAll(msgs) {
+        list.querySelectorAll('.msg-bubble').forEach(n => n.remove());
+        renderedIds.clear();
+        lastSeenId = 0;
+        appendMessages(msgs);
+    }
+
+    async function poll(replace) {
+        if (pollInflight || stopped) return;
+        pollInflight = true;
+        try {
+            const after = replace ? 0 : lastSeenId;
+            const r = await fetch(`${POLL_URL}?after=${after}`, { credentials: 'same-origin' });
+            if (!r.ok) return;
+            const data = await r.json();
+            if (!data.success) return;
+            if (replace) {
+                replaceAll(data.messages || []);
+            } else {
+                appendMessages(data.messages || []);
+            }
+        } catch (e) {
+            // network blip — try next tick
+        } finally {
+            pollInflight = false;
+        }
+    }
+
+    function startPolling() {
+        if (pollTimer || stopped) return;
+        pollTimer = setInterval(() => poll(false), POLL_INTERVAL);
+        if (pollStatus) {
+            pollStatus.classList.remove('bg-secondary', 'bg-opacity-10', 'text-secondary');
+            pollStatus.classList.add('bg-success', 'bg-opacity-10', 'text-success');
+            pollStatus.innerHTML = '<i class="bi bi-arrow-repeat"></i> Auto';
+        }
+    }
+    function stopPolling() {
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        if (pollStatus) {
+            pollStatus.classList.remove('bg-success', 'bg-opacity-10', 'text-success');
+            pollStatus.classList.add('bg-secondary', 'bg-opacity-10', 'text-secondary');
+            pollStatus.innerHTML = '<i class="bi bi-pause-circle"></i> Pauza';
+        }
+    }
+
+    try {
+        const initEl = document.getElementById('initialMessagesData');
+        if (initEl) {
+            const initial = JSON.parse(initEl.textContent || '[]');
+            if (initial && initial.length) {
+                appendMessages(initial);
+            } else if (emptyState) {
+                emptyState.innerHTML = '<i class="bi bi-chat-dots fs-1 opacity-25 d-block mb-2"></i>Xabar yo\'q';
+            }
+        }
+    } catch (e) { /* ignore */ }
+    list.scrollTop = list.scrollHeight;
+
+    refreshBtn.addEventListener('click', () => poll(true));
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) stopPolling();
+        else { startPolling(); poll(false); }
     });
+    window.addEventListener('pagehide', () => { stopped = true; stopPolling(); });
+    window.addEventListener('beforeunload', () => { stopped = true; stopPolling(); });
+
+    if (!document.hidden) startPolling();
+
+    list.addEventListener('click', e => {
+        const replyTrigger = e.target.closest('[data-action="reply"]');
+        if (replyTrigger) {
+            const bubble = replyTrigger.closest('.msg-bubble');
+            const msgId = bubble.dataset.msgId;
+            const text = bubble.querySelector('[data-field="text"]').textContent || '';
+            const sender = bubble.querySelector('[data-field="sender"]').textContent || (bubble.classList.contains('out') ? 'Siz' : '—');
+            replyToId.value = msgId;
+            replyToSender.textContent = sender;
+            replyToText.textContent = text.slice(0, 80);
+            replyRibbon.classList.remove('d-none');
+            replyRibbon.classList.add('d-flex');
+            const ta = document.querySelector('#sendForm textarea');
+            if (ta) ta.focus();
+            return;
+        }
+        const reactTrigger = e.target.closest('[data-action="react"]');
+        if (reactTrigger) {
+            const picker = reactTrigger.closest('.msg-content').querySelector('.reaction-picker');
+            document.querySelectorAll('.reaction-picker.open').forEach(p => { if (p !== picker) p.classList.remove('open'); });
+            picker.classList.toggle('open');
+            return;
+        }
+        const pickerBtn = e.target.closest('.reaction-picker button');
+        if (pickerBtn) {
+            const bubble = pickerBtn.closest('.msg-bubble');
+            const emoji = pickerBtn.dataset.emoji;
+            sendReact(bubble.dataset.msgId, emoji);
+            pickerBtn.closest('.reaction-picker').classList.remove('open');
+            return;
+        }
+        const reactionPill = e.target.closest('.reaction-pill');
+        if (reactionPill) {
+            sendReact(reactionPill.dataset.reactMsg, reactionPill.dataset.reactEmoji);
+            return;
+        }
+        const pollOpt = e.target.closest('.poll-option');
+        if (pollOpt) {
+            const cb = pollOpt.querySelector('input');
+            if (cb && cb.disabled) return;
+            const multi = pollOpt.dataset.pollMulti === 'True';
+            if (!multi) {
+                voteOnPoll(pollOpt.dataset.pollMsg, [parseInt(pollOpt.dataset.pollOpt, 10)]);
+            } else {
+                cb.checked = !cb.checked;
+            }
+            return;
+        }
+        const pollSubmit = e.target.closest('.poll-submit');
+        if (pollSubmit) {
+            const msgId = pollSubmit.dataset.pollMsg;
+            const checks = list.querySelectorAll(`[data-poll-msg="${msgId}"] input:checked`);
+            const opts = Array.from(checks).map(c => parseInt(c.closest('.poll-option').dataset.pollOpt, 10));
+            if (opts.length) voteOnPoll(msgId, opts);
+            return;
+        }
+        const botBtn = e.target.closest('.bot-btn[data-btn-msg]');
+        if (botBtn) {
+            clickBotBtn(botBtn.dataset.btnMsg, botBtn.dataset.btnRow, botBtn.dataset.btnCol);
+            return;
+        }
+    });
+
+    cancelReplyBtn.addEventListener('click', () => {
+        replyToId.value = '';
+        replyRibbon.classList.add('d-none');
+        replyRibbon.classList.remove('d-flex');
+    });
+
+    function sendReact(msgId, emoji) {
+        document.getElementById('reactMsgId').value = msgId;
+        document.getElementById('reactEmoji').value = emoji;
+        document.getElementById('reactForm').submit();
+    }
+    function voteOnPoll(msgId, options) {
+        document.getElementById('voteMsgId').value = msgId;
+        const holder = document.getElementById('voteOptionsHolder');
+        holder.innerHTML = '';
+        options.forEach(o => {
+            const inp = document.createElement('input');
+            inp.type = 'hidden'; inp.name = 'options'; inp.value = String(o);
+            holder.appendChild(inp);
+        });
+        document.getElementById('voteForm').submit();
+    }
+    function clickBotBtn(msgId, row, col) {
+        document.getElementById('clickMsgId').value = msgId;
+        document.getElementById('clickRow').value = row;
+        document.getElementById('clickCol').value = col;
+        document.getElementById('clickForm').submit();
+    }
 
     document.querySelectorAll('textarea').forEach(ta => {
         ta.addEventListener('keydown', e => {

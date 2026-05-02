@@ -27,8 +27,15 @@ from telethon.tl.functions.messages import (
     StartBotRequest,
 )
 from telethon.tl.types import (
-    PeerChannel, ReactionEmoji, Channel, Chat,
+    PeerChannel, ReactionEmoji, ReactionCustomEmoji, Channel, Chat, User,
     ChannelParticipantCreator, ChannelParticipantAdmin,
+    MessageMediaPhoto, MessageMediaDocument, MessageMediaPoll,
+    MessageMediaWebPage, MessageMediaContact, MessageMediaGeo,
+    KeyboardButtonCallback, KeyboardButtonUrl, KeyboardButtonSwitchInline,
+    KeyboardButtonGame, KeyboardButtonBuy, KeyboardButtonUrlAuth,
+    KeyboardButtonRequestPhone, KeyboardButtonRequestGeoLocation,
+    DocumentAttributeVideo, DocumentAttributeAudio, DocumentAttributeAnimated,
+    DocumentAttributeSticker,
 )
 from telethon.errors import (
     FloodWaitError,
@@ -1136,33 +1143,31 @@ async def leave_specific_chats_for_account(
 # ---------------------------------------------------------------------------
 
 async def list_dialogs_for_account(account, *, max_dialogs=500):
-    """Pull all dialogs from Telegram and split them into groups/channels.
+    """Pull dialogs and split into groups, channels, DMs (contacts +
+    non-contacts) and bots.
 
     Returns:
         {
           'success': bool,
           'error': str (if not success),
-          'groups':   [{id, title, is_admin, is_creator, unread, members}],
-          'channels': [{id, title, is_admin, is_creator, unread, subscribers}],
+          'groups':   [...],
+          'channels': [...],
+          'dms':      [...],   # private chats with users (non-bot)
+          'bots':     [...],   # private chats with bots
         }
-
-    Admin status comes from entity.creator / entity.admin_rights — these
-    are sometimes missing from iter_dialogs() snapshots, so the live-leave
-    runner does its own get_permissions() check before deleting; for the
-    listing UI a "best-effort" flag is fine (it's only informational).
     """
     try:
         client = await get_client_for_account(account)
     except Exception as e:
         return {'success': False, 'error': f"Ulanib bo'lmadi: {e}",
-                'groups': [], 'channels': []}
+                'groups': [], 'channels': [], 'dms': [], 'bots': []}
     try:
         me = await client.get_me()
         if not me:
             return {'success': False, 'error': "Sessiya yaroqsiz",
-                    'groups': [], 'channels': []}
+                    'groups': [], 'channels': [], 'dms': [], 'bots': []}
 
-        groups, channels = [], []
+        groups, channels, dms, bots = [], [], [], []
         n = 0
         async for dialog in client.iter_dialogs():
             n += 1
@@ -1196,16 +1201,36 @@ async def list_dialogs_for_account(account, *, max_dialogs=500):
                     'unread': getattr(dialog, 'unread_count', 0),
                     'members': getattr(entity, 'participants_count', None),
                 })
+            elif isinstance(entity, User):
+                first = getattr(entity, 'first_name', '') or ''
+                last = getattr(entity, 'last_name', '') or ''
+                full = (first + ' ' + last).strip() or getattr(entity, 'username', '') or '<noname>'
+                row = {
+                    'id': entity.id,
+                    'title': full,
+                    'username': getattr(entity, 'username', None),
+                    'is_contact': bool(getattr(entity, 'contact', False)),
+                    'is_verified': bool(getattr(entity, 'verified', False)),
+                    'is_premium': bool(getattr(entity, 'premium', False)),
+                    'unread': getattr(dialog, 'unread_count', 0),
+                    'phone': getattr(entity, 'phone', None),
+                }
+                if getattr(entity, 'bot', False):
+                    bots.append(row)
+                else:
+                    dms.append(row)
 
-        # Sort by title for deterministic UI
         groups.sort(key=lambda r: (r['title'] or '').lower())
         channels.sort(key=lambda r: (r['title'] or '').lower())
+        dms.sort(key=lambda r: (-(r['unread'] or 0), (r['title'] or '').lower()))
+        bots.sort(key=lambda r: (r['title'] or '').lower())
 
-        return {'success': True, 'groups': groups, 'channels': channels}
+        return {'success': True, 'groups': groups, 'channels': channels,
+                'dms': dms, 'bots': bots}
 
     except Exception as e:
         return {'success': False, 'error': str(e)[:200],
-                'groups': [], 'channels': []}
+                'groups': [], 'channels': [], 'dms': [], 'bots': []}
     finally:
         try:
             await client.disconnect()
@@ -1607,17 +1632,243 @@ async def _resolve_chat_entity(client, chat_id):
     return None, None
 
 
-async def fetch_chat_messages_for_account(account, chat_id, *, limit=40):
-    """Pull the most recent messages from a single chat.
+def _serialize_message(m, *, chat_username, is_broadcast, chat_title):
+    """Convert a Telethon Message into a JSON-friendly dict for the UI."""
+    sender_name = ''
+    sender_id = None
+    if m.sender:
+        sender_id = getattr(m.sender, 'id', None)
+        first = getattr(m.sender, 'first_name', '') or ''
+        last = getattr(m.sender, 'last_name', '') or ''
+        sender_name = (first + ' ' + last).strip() or getattr(m.sender, 'username', '') or ''
+    elif getattr(m, 'post', False):
+        sender_name = chat_title
 
-    Returns {success, error, chat, messages}.
+    text = m.message or ''
 
-    `chat` carries title, kind ('group'|'channel'), username, members,
-    is_creator, is_admin, can_send, has_comments, unread. `has_comments`
-    is True when a broadcast channel has a linked discussion group — the
-    UI uses it to show the "Comment" button on each post.
+    replies = 0
+    if getattr(m, 'replies', None):
+        replies = getattr(m.replies, 'replies', 0) or 0
+
+    post_link = ''
+    if is_broadcast and chat_username:
+        post_link = f'https://t.me/{chat_username}/{m.id}'
+
+    reply_to = None
+    if getattr(m, 'reply_to', None) and getattr(m.reply_to, 'reply_to_msg_id', None):
+        reply_to = {'id': int(m.reply_to.reply_to_msg_id), 'text': '', 'sender': ''}
+
+    media = None
+    if m.media is not None:
+        media = _serialize_media(m)
+
+    poll = _serialize_poll(m) if isinstance(m.media, MessageMediaPoll) else None
+
+    reactions = _serialize_reactions(m)
+
+    buttons = _serialize_buttons(m)
+
+    return {
+        'id': m.id,
+        'text': text[:4096],
+        'date_iso': m.date.isoformat() if m.date else '',
+        'date_human': m.date.strftime('%H:%M · %d.%m.%Y') if m.date else '',
+        'out': bool(m.out),
+        'sender': sender_name[:64],
+        'sender_id': sender_id,
+        'replies': replies,
+        'post_link': post_link,
+        'reply_to': reply_to,
+        'media': media,
+        'poll': poll,
+        'reactions': reactions,
+        'buttons': buttons,
+        'edited': bool(getattr(m, 'edit_date', None)),
+        'pinned': bool(getattr(m, 'pinned', False)),
+        'via_bot': getattr(getattr(m, 'via_bot', None), 'username', None) if getattr(m, 'via_bot', None) else None,
+    }
+
+
+def _serialize_media(m):
+    """Return {kind, mime, width, height, duration, file_size, has_thumb}."""
+    media = m.media
+    if isinstance(media, MessageMediaPhoto):
+        return {'kind': 'photo', 'has_thumb': True}
+    if isinstance(media, MessageMediaDocument):
+        doc = media.document
+        if doc is None:
+            return {'kind': 'document'}
+        mime = getattr(doc, 'mime_type', '') or ''
+        attrs = getattr(doc, 'attributes', []) or []
+        kind = 'document'
+        width = height = duration = None
+        is_animated = False
+        is_sticker = False
+        is_voice = False
+        is_round = False
+        for a in attrs:
+            if isinstance(a, DocumentAttributeAnimated):
+                is_animated = True
+            if isinstance(a, DocumentAttributeSticker):
+                is_sticker = True
+            if isinstance(a, DocumentAttributeVideo):
+                width = a.w; height = a.h; duration = a.duration
+                is_round = bool(getattr(a, 'round_message', False))
+            if isinstance(a, DocumentAttributeAudio):
+                duration = a.duration
+                is_voice = bool(getattr(a, 'voice', False))
+        if is_sticker:
+            kind = 'sticker'
+        elif is_voice:
+            kind = 'voice'
+        elif mime.startswith('video/') or width:
+            kind = 'video_round' if is_round else ('gif' if is_animated else 'video')
+        elif mime.startswith('audio/'):
+            kind = 'audio'
+        elif mime.startswith('image/'):
+            kind = 'photo'
+        return {
+            'kind': kind, 'mime': mime,
+            'width': width, 'height': height,
+            'duration': duration,
+            'file_size': getattr(doc, 'size', None),
+            'has_thumb': bool(getattr(doc, 'thumbs', None)),
+        }
+    if isinstance(media, MessageMediaWebPage):
+        wp = getattr(media, 'webpage', None)
+        if wp is None or not getattr(wp, 'url', None):
+            return None
+        return {
+            'kind': 'webpage',
+            'url': wp.url,
+            'title': (getattr(wp, 'title', '') or '')[:200],
+            'description': (getattr(wp, 'description', '') or '')[:300],
+            'site_name': getattr(wp, 'site_name', None),
+            'has_thumb': bool(getattr(wp, 'photo', None)),
+        }
+    if isinstance(media, MessageMediaContact):
+        return {
+            'kind': 'contact',
+            'first_name': getattr(media, 'first_name', ''),
+            'last_name': getattr(media, 'last_name', ''),
+            'phone_number': getattr(media, 'phone_number', ''),
+        }
+    if isinstance(media, MessageMediaGeo):
+        geo = getattr(media, 'geo', None)
+        if geo is None:
+            return None
+        return {'kind': 'geo', 'lat': getattr(geo, 'lat', None), 'long': getattr(geo, 'long', None)}
+    return {'kind': 'other'}
+
+
+def _serialize_poll(m):
+    poll_obj = m.media.poll
+    results = m.media.results
+    total_voters = getattr(results, 'total_voters', 0) or 0
+    chosen_set = set()
+    correct_set = set()
+    if results and getattr(results, 'results', None):
+        for i, r in enumerate(results.results):
+            if getattr(r, 'chosen', False):
+                chosen_set.add(i)
+            if getattr(r, 'correct', False):
+                correct_set.add(i)
+
+    options = []
+    voters_by_index = {}
+    if results and getattr(results, 'results', None):
+        for i, r in enumerate(results.results):
+            voters_by_index[i] = getattr(r, 'voters', 0) or 0
+
+    for i, ans in enumerate(poll_obj.answers):
+        opt_text = ans.text.text if hasattr(ans.text, 'text') else str(ans.text)
+        options.append({
+            'index': i,
+            'text': opt_text,
+            'voters': voters_by_index.get(i, 0),
+            'chosen': i in chosen_set,
+            'correct': i in correct_set,
+        })
+
+    question_text = poll_obj.question.text if hasattr(poll_obj.question, 'text') else str(poll_obj.question)
+    return {
+        'question': question_text,
+        'options': options,
+        'total_voters': total_voters,
+        'closed': bool(getattr(poll_obj, 'closed', False)),
+        'multiple_choice': bool(getattr(poll_obj, 'multiple_choice', False)),
+        'quiz': bool(getattr(poll_obj, 'quiz', False)),
+        'voted': len(chosen_set) > 0,
+    }
+
+
+def _serialize_reactions(m):
+    rxs = getattr(m, 'reactions', None)
+    if not rxs:
+        return []
+    out = []
+    for r in (getattr(rxs, 'results', None) or []):
+        emoji = ''
+        kind = 'emoji'
+        if isinstance(r.reaction, ReactionEmoji):
+            emoji = r.reaction.emoticon or ''
+        elif isinstance(r.reaction, ReactionCustomEmoji):
+            kind = 'custom'
+            emoji = '⭐'
+        out.append({
+            'emoji': emoji,
+            'kind': kind,
+            'count': r.count,
+            'chosen': bool(getattr(r, 'chosen_order', None) is not None or getattr(r, 'chosen', False)),
+        })
+    return out
+
+
+def _serialize_buttons(m):
+    markup = getattr(m, 'reply_markup', None)
+    if not markup or not getattr(markup, 'rows', None):
+        return []
+    out = []
+    for row_i, row in enumerate(markup.rows):
+        row_btns = []
+        for col_i, btn in enumerate(row.buttons):
+            entry = {
+                'row': row_i, 'col': col_i,
+                'text': getattr(btn, 'text', '') or '',
+                'type': 'unknown',
+            }
+            if isinstance(btn, KeyboardButtonCallback):
+                entry['type'] = 'callback'
+            elif isinstance(btn, KeyboardButtonUrl):
+                entry['type'] = 'url'
+                entry['url'] = btn.url
+            elif isinstance(btn, KeyboardButtonUrlAuth):
+                entry['type'] = 'url'
+                entry['url'] = btn.url
+            elif isinstance(btn, KeyboardButtonSwitchInline):
+                entry['type'] = 'switch_inline'
+                entry['query'] = getattr(btn, 'query', '')
+            elif isinstance(btn, KeyboardButtonGame):
+                entry['type'] = 'game'
+            elif isinstance(btn, KeyboardButtonBuy):
+                entry['type'] = 'buy'
+            elif isinstance(btn, (KeyboardButtonRequestPhone, KeyboardButtonRequestGeoLocation)):
+                entry['type'] = 'request'
+            row_btns.append(entry)
+        out.append(row_btns)
+    return out
+
+
+async def fetch_chat_messages_for_account(account, chat_id, *, limit=40, after_id=0,
+                                           mark_read=True):
+    """Pull recent messages from a single chat with rich content.
+
+    Set `mark_read=True` (default) so the live-chat view marks dialogs
+    read on every fetch — Telegram interprets a session that views a
+    chat without acknowledging reads as a scraper, and may flag it.
     """
     chat_id = int(chat_id)
+    after_id = int(after_id or 0)
     try:
         client = await get_client_for_account(account)
     except Exception as e:
@@ -1633,24 +1884,42 @@ async def fetch_chat_messages_for_account(account, chat_id, *, limit=40):
         entity, dialog = await _resolve_chat_entity(client, chat_id)
         if entity is None:
             return {'success': False,
-                    'error': "Chat topilmadi (akkaunt chatdan chiqib ketgan bo'lishi mumkin)",
+                    'error': "Chat topilmadi",
                     'chat': None, 'messages': []}
 
-        is_megagroup = bool(getattr(entity, 'megagroup', False))
-        is_broadcast = isinstance(entity, Channel) and not is_megagroup
-        kind = 'channel' if is_broadcast else 'group'
+        if isinstance(entity, Channel):
+            is_megagroup = bool(getattr(entity, 'megagroup', False))
+            is_broadcast = not is_megagroup
+            kind = 'channel' if is_broadcast else 'group'
+            is_creator = bool(getattr(entity, 'creator', False))
+            is_admin = bool(getattr(entity, 'admin_rights', None))
+            username = getattr(entity, 'username', None)
+            title = getattr(entity, 'title', None) or '<noname>'
+            members = getattr(entity, 'participants_count', None)
+        elif isinstance(entity, Chat):
+            is_broadcast = False
+            kind = 'group'
+            is_creator = bool(getattr(entity, 'creator', False))
+            is_admin = bool(getattr(entity, 'admin_rights', None))
+            username = None
+            title = getattr(entity, 'title', None) or '<noname>'
+            members = getattr(entity, 'participants_count', None)
+        elif isinstance(entity, User):
+            is_broadcast = False
+            kind = 'bot' if getattr(entity, 'bot', False) else 'dm'
+            is_creator = False
+            is_admin = False
+            username = getattr(entity, 'username', None)
+            first = getattr(entity, 'first_name', '') or ''
+            last = getattr(entity, 'last_name', '') or ''
+            title = (first + ' ' + last).strip() or username or '<noname>'
+            members = None
+        else:
+            return {'success': False, 'error': "Noma'lum chat turi",
+                    'chat': None, 'messages': []}
 
-        is_creator = bool(getattr(entity, 'creator', False))
-        is_admin = bool(getattr(entity, 'admin_rights', None))
-        username = getattr(entity, 'username', None)
-        title = getattr(entity, 'title', None) or '<noname>'
-        members = getattr(entity, 'participants_count', None)
-
-        # Broadcast channels: only admins can post directly. Comments are
-        # routed through the linked discussion group so non-admins can
-        # still participate. Detect that link via GetFullChannelRequest.
         has_comments = False
-        if is_broadcast:
+        if kind == 'channel':
             try:
                 from telethon.tl.functions.channels import GetFullChannelRequest
                 full = await client(GetFullChannelRequest(entity))
@@ -1658,48 +1927,29 @@ async def fetch_chat_messages_for_account(account, chat_id, *, limit=40):
             except Exception:
                 pass
 
-        if is_broadcast:
+        if kind == 'channel':
             can_send = is_creator or is_admin
         else:
             can_send = True
 
+        iter_kwargs = {'limit': limit}
+        if after_id:
+            iter_kwargs['min_id'] = after_id
+
         msgs = []
-        async for m in client.iter_messages(entity, limit=limit):
-            sender_name = ''
-            if m.sender:
-                first = getattr(m.sender, 'first_name', '') or ''
-                last = getattr(m.sender, 'last_name', '') or ''
-                sender_name = (first + ' ' + last).strip() or getattr(m.sender, 'username', '') or ''
-            elif getattr(m, 'post', False):
-                sender_name = title
+        async for m in client.iter_messages(entity, **iter_kwargs):
+            msgs.append(_serialize_message(
+                m, chat_username=username, is_broadcast=is_broadcast,
+                chat_title=title,
+            ))
 
-            text = m.message or ''
-            if m.media and not text:
-                text = '[media]'
-
-            replies = 0
-            if getattr(m, 'replies', None):
-                replies = getattr(m.replies, 'replies', 0) or 0
-
-            post_link = ''
-            if is_broadcast and username:
-                post_link = f'https://t.me/{username}/{m.id}'
-
-            msgs.append({
-                'id': m.id,
-                'text': text[:4096],
-                'date_iso': m.date.isoformat() if m.date else '',
-                'date_human': m.date.strftime('%H:%M · %d.%m.%Y') if m.date else '',
-                'out': bool(m.out),
-                'sender': sender_name[:64],
-                'replies': replies,
-                'has_media': bool(m.media),
-                'post_link': post_link,
-            })
-
-        # Telegram returns newest-first; flip so the UI renders top-old,
-        # bottom-new like every chat client.
         msgs.reverse()
+
+        if mark_read and msgs:
+            try:
+                await client.send_read_acknowledge(entity, clear_mentions=True)
+            except Exception:
+                pass
 
         return {
             'success': True, 'error': '',
@@ -1732,15 +1982,10 @@ async def fetch_chat_messages_for_account(account, chat_id, *, limit=40):
             pass
 
 
-async def send_chat_message_for_account(account, chat_id, text, *, comment_to=None):
-    """Post a message to one chat from this account.
-
-    `comment_to` (optional message id) routes the post into the channel's
-    linked discussion thread — i.e. it appears as a comment on that
-    specific channel post. Telethon implements this by silently posting
-    in the linked discussion group with a reply header pointing at the
-    original post.
-    """
+async def send_chat_message_for_account(account, chat_id, text, *,
+                                         comment_to=None, reply_to=None):
+    """Post a message. `reply_to` quotes a message in-chat; `comment_to`
+    routes into a channel's linked discussion thread (Telethon-specific)."""
     chat_id = int(chat_id)
     text = (text or '').strip()
     if not text:
@@ -1765,8 +2010,14 @@ async def send_chat_message_for_account(account, chat_id, text, *, comment_to=No
         kwargs = {}
         if comment_to is not None:
             kwargs['comment_to'] = int(comment_to)
+        if reply_to is not None:
+            kwargs['reply_to'] = int(reply_to)
 
         sent = await client.send_message(entity, text, **kwargs)
+        try:
+            await client.send_read_acknowledge(entity)
+        except Exception:
+            pass
         return {'success': True, 'error': '', 'message_id': getattr(sent, 'id', None)}
 
     except FloodWaitError as e:
@@ -1776,6 +2027,185 @@ async def send_chat_message_for_account(account, chat_id, text, *, comment_to=No
         return {'success': False, 'error': "Sessiya chiqarib yuborilgan"}
     except Exception as e:
         return {'success': False, 'error': str(e)[:200]}
+    finally:
+        try:
+            await client.disconnect()
+        except Exception:
+            pass
+
+
+async def mark_chat_read_for_account(account, chat_id):
+    """Acknowledge unread messages in a chat — used after every fetch so
+    Telegram doesn't flag the session as a stealth scraper."""
+    chat_id = int(chat_id)
+    try:
+        client = await get_client_for_account(account)
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+    try:
+        entity, _ = await _resolve_chat_entity(client, chat_id)
+        if entity is None:
+            return {'success': False, 'error': "Chat topilmadi"}
+        await client.send_read_acknowledge(entity, clear_mentions=True)
+        return {'success': True}
+    except Exception as e:
+        return {'success': False, 'error': str(e)[:200]}
+    finally:
+        try:
+            await client.disconnect()
+        except Exception:
+            pass
+
+
+async def react_to_chat_message_for_account(account, chat_id, msg_id, emoji):
+    """Toggle a reaction on a message. emoji='' clears the user's reaction."""
+    chat_id = int(chat_id); msg_id = int(msg_id)
+    try:
+        client = await get_client_for_account(account)
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+    try:
+        entity, _ = await _resolve_chat_entity(client, chat_id)
+        if entity is None:
+            return {'success': False, 'error': "Chat topilmadi"}
+        reaction = [ReactionEmoji(emoticon=emoji)] if emoji else []
+        await client(SendReactionRequest(
+            peer=entity, msg_id=msg_id, reaction=reaction,
+            add_to_recent=bool(emoji),
+        ))
+        return {'success': True}
+    except ReactionInvalidError:
+        return {'success': False, 'error': "Bu emoji bu chatda ruxsat etilmagan"}
+    except FloodWaitError as e:
+        return {'success': False, 'error': f"FloodWait: {e.seconds}s"}
+    except Exception as e:
+        return {'success': False, 'error': str(e)[:200]}
+    finally:
+        try:
+            await client.disconnect()
+        except Exception:
+            pass
+
+
+async def vote_in_chat_poll_for_account(account, chat_id, msg_id, option_indices):
+    """Cast a vote on a poll. `option_indices` is a list of option ints."""
+    chat_id = int(chat_id); msg_id = int(msg_id)
+    try:
+        client = await get_client_for_account(account)
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+    try:
+        entity, _ = await _resolve_chat_entity(client, chat_id)
+        if entity is None:
+            return {'success': False, 'error': "Chat topilmadi"}
+        msg = await client.get_messages(entity, ids=msg_id)
+        if not msg or not isinstance(msg.media, MessageMediaPoll):
+            return {'success': False, 'error': "So'rovnoma topilmadi"}
+        answers = msg.media.poll.answers
+        try:
+            options = [answers[i].option for i in option_indices if 0 <= i < len(answers)]
+        except Exception:
+            return {'success': False, 'error': "Variant noto'g'ri"}
+        if not options:
+            return {'success': False, 'error': "Variant tanlanmagan"}
+        await client(SendVoteRequest(peer=entity, msg_id=msg_id, options=options))
+        return {'success': True}
+    except FloodWaitError as e:
+        return {'success': False, 'error': f"FloodWait: {e.seconds}s"}
+    except Exception as e:
+        return {'success': False, 'error': str(e)[:200]}
+    finally:
+        try:
+            await client.disconnect()
+        except Exception:
+            pass
+
+
+async def click_bot_button_in_chat_for_account(account, chat_id, msg_id, row, col):
+    """Click an inline-keyboard button on a message (callback / url / etc.).
+
+    Telethon's `Message.click(i, j)` handles dispatch by button type:
+    callback → SendCallbackQuery, url → returns the URL, switch_inline → opens
+    the inline picker (we just return the query string here).
+    """
+    chat_id = int(chat_id); msg_id = int(msg_id)
+    row = int(row); col = int(col)
+    try:
+        client = await get_client_for_account(account)
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+    try:
+        entity, _ = await _resolve_chat_entity(client, chat_id)
+        if entity is None:
+            return {'success': False, 'error': "Chat topilmadi"}
+        msg = await client.get_messages(entity, ids=msg_id)
+        if not msg:
+            return {'success': False, 'error': "Xabar topilmadi"}
+        try:
+            result = await msg.click(row, col)
+        except BotResponseTimeoutError:
+            return {'success': False, 'error': "Bot javob bermadi (timeout)"}
+        text = ''
+        if result is not None:
+            text = getattr(result, 'message', None) or str(result)
+        return {'success': True, 'result': text[:300]}
+    except FloodWaitError as e:
+        return {'success': False, 'error': f"FloodWait: {e.seconds}s"}
+    except Exception as e:
+        return {'success': False, 'error': str(e)[:200]}
+    finally:
+        try:
+            await client.disconnect()
+        except Exception:
+            pass
+
+
+async def download_chat_message_media_for_account(account, chat_id, msg_id, *, thumb=True):
+    """Download photo/document/sticker bytes for a single message.
+
+    Returns (bytes, mime_type) on success or (None, error_str) on failure.
+    `thumb=True` fetches the smallest stripped/jpeg preview only — fast,
+    safe to call from the live view. `thumb=False` downloads the full
+    file (used by the user's "ko'rish" click).
+    """
+    from io import BytesIO
+    chat_id = int(chat_id); msg_id = int(msg_id)
+    try:
+        client = await get_client_for_account(account)
+    except Exception as e:
+        return None, str(e)
+    try:
+        entity, _ = await _resolve_chat_entity(client, chat_id)
+        if entity is None:
+            return None, "Chat topilmadi"
+        msg = await client.get_messages(entity, ids=msg_id)
+        if not msg or not msg.media:
+            return None, "Media yo'q"
+
+        bio = BytesIO()
+        if thumb:
+            try:
+                await client.download_media(msg, bio, thumb=-1)
+            except Exception:
+                bio = BytesIO()
+                await client.download_media(msg, bio)
+        else:
+            await client.download_media(msg, bio)
+        bio.seek(0)
+        data = bio.read()
+        if not data:
+            return None, "Bo'sh fayl"
+
+        mime = 'image/jpeg'
+        if isinstance(msg.media, MessageMediaDocument) and msg.media.document:
+            doc_mime = getattr(msg.media.document, 'mime_type', '') or ''
+            if doc_mime:
+                mime = doc_mime
+        return data, mime
+    except FloodWaitError as e:
+        return None, f"FloodWait: {e.seconds}s"
+    except Exception as e:
+        return None, str(e)[:200]
     finally:
         try:
             await client.disconnect()

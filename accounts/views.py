@@ -897,18 +897,19 @@ async def account_live_chats(request, pk):
         'account': account,
         'groups': result['groups'],
         'channels': result['channels'],
+        'dms': result.get('dms', []),
+        'bots': result.get('bots', []),
     })
 
 
 async def account_chat_detail(request, pk, chat_id):
-    """Telegram-style chat viewer: last ~40 messages from one chat, plus
-    a textbox to send a new message. For broadcast channels with a linked
-    discussion group, each post grows a "Comment" inline form that posts
-    via comment_to=<msg_id>.
+    """Telegram-style chat viewer with full action support.
 
-    Hits the Telegram API on every load — typically <2s for chats with
-    cached entities. Posting is also synchronous; the result message
-    flashes back via Django messages.
+    POST `op`:
+      send   — text + optional reply_to / comment_to
+      react  — msg_id + emoji ('' to clear)
+      vote   — msg_id + options (multi)
+      click  — msg_id + row + col (bot inline keyboard)
     """
     user = await _require_login(request)
     if user is None:
@@ -921,30 +922,71 @@ async def account_chat_detail(request, pk, chat_id):
 
     from jobs.services import (
         fetch_chat_messages_for_account, send_chat_message_for_account,
+        react_to_chat_message_for_account, vote_in_chat_poll_for_account,
+        click_bot_button_in_chat_for_account,
     )
 
     if request.method == 'POST':
-        text = (request.POST.get('text') or '').strip()
-        comment_to = request.POST.get('comment_to') or None
-        if comment_to and comment_to.isdigit():
-            comment_to = int(comment_to)
-        else:
-            comment_to = None
+        op = request.POST.get('op') or 'send'
 
-        if not text:
-            messages.warning(request, "Xabar bo'sh")
-            return redirect('accounts:account_chat_detail', pk=pk, chat_id=chat_id)
+        if op == 'send':
+            text = (request.POST.get('text') or '').strip()
+            comment_to = request.POST.get('comment_to') or None
+            reply_to = request.POST.get('reply_to') or None
+            comment_to = int(comment_to) if comment_to and comment_to.isdigit() else None
+            reply_to = int(reply_to) if reply_to and reply_to.isdigit() else None
+            if not text:
+                messages.warning(request, "Xabar bo'sh")
+            else:
+                result = await send_chat_message_for_account(
+                    account, chat_id, text,
+                    comment_to=comment_to, reply_to=reply_to,
+                )
+                if result['success']:
+                    messages.success(request, "Sharh yuborildi" if comment_to else "Xabar yuborildi")
+                else:
+                    messages.error(request, f"Xato: {result['error']}")
 
-        result = await send_chat_message_for_account(
-            account, chat_id, text, comment_to=comment_to,
-        )
-        if result['success']:
-            messages.success(
-                request,
-                "Sharh yuborildi" if comment_to else "Xabar yuborildi",
-            )
-        else:
-            messages.error(request, f"Xato: {result['error']}")
+        elif op == 'react':
+            msg_id = request.POST.get('msg_id', '')
+            emoji = request.POST.get('emoji', '')
+            if msg_id.isdigit():
+                result = await react_to_chat_message_for_account(
+                    account, chat_id, int(msg_id), emoji,
+                )
+                if not result['success']:
+                    messages.error(request, f"Reaksiya: {result['error']}")
+
+        elif op == 'vote':
+            msg_id = request.POST.get('msg_id', '')
+            opts = request.POST.getlist('options')
+            try:
+                indices = [int(x) for x in opts]
+            except ValueError:
+                indices = []
+            if msg_id.isdigit() and indices:
+                result = await vote_in_chat_poll_for_account(
+                    account, chat_id, int(msg_id), indices,
+                )
+                if result['success']:
+                    messages.success(request, "Ovoz berildi")
+                else:
+                    messages.error(request, f"Ovoz: {result['error']}")
+
+        elif op == 'click':
+            msg_id = request.POST.get('msg_id', '')
+            row = request.POST.get('row', '0')
+            col = request.POST.get('col', '0')
+            if msg_id.isdigit() and row.isdigit() and col.isdigit():
+                result = await click_bot_button_in_chat_for_account(
+                    account, chat_id, int(msg_id), int(row), int(col),
+                )
+                if result['success']:
+                    if result.get('result'):
+                        messages.info(request, f"Bot: {result['result']}")
+                else:
+                    messages.error(request, f"Tugma: {result['error']}")
+
         return redirect('accounts:account_chat_detail', pk=pk, chat_id=chat_id)
 
     result = await fetch_chat_messages_for_account(account, chat_id)
@@ -955,8 +997,113 @@ async def account_chat_detail(request, pk, chat_id):
     return await render_async(request, 'accounts/chat_detail.html', {
         'account': account,
         'chat': result['chat'],
-        'messages_list': result['messages'],
+        'initial_messages_json': result['messages'],
     })
+
+
+async def account_chat_poll_json(request, pk, chat_id):
+    """JSON endpoint for the live-chat polling JS.
+
+    Query params:
+      after — only return messages with id > after (delta poll)
+      limit — max messages (default 40, capped at 100)
+    """
+    user = await _require_login(request)
+    if user is None:
+        return JsonResponse({'error': 'auth'}, status=401)
+
+    account = await get_object_sync(Account, pk, owner=user)
+    if not account.session_string:
+        return JsonResponse({'success': False, 'error': "Sessiya yo'q"}, status=400)
+
+    try:
+        after_id = int(request.GET.get('after', '0') or '0')
+    except ValueError:
+        after_id = 0
+    try:
+        limit = max(1, min(100, int(request.GET.get('limit', '40') or '40')))
+    except ValueError:
+        limit = 40
+
+    from jobs.services import fetch_chat_messages_for_account
+    result = await fetch_chat_messages_for_account(
+        account, chat_id, limit=limit, after_id=after_id,
+    )
+    return JsonResponse(result)
+
+
+async def account_chat_media(request, pk, chat_id, msg_id):
+    """Stream a message's media (or its thumbnail) as bytes.
+
+    `?thumb=1` returns the smallest preview (fast); without it we
+    download the full file. Cached on disk so repeated polling /
+    viewing doesn't re-download. Owner-only.
+    """
+    import os
+    from django.conf import settings as dj_settings
+    from django.http import HttpResponse, FileResponse, Http404
+
+    user = await _require_login(request)
+    if user is None:
+        return HttpResponse(status=401)
+
+    account = await get_object_sync(Account, pk, owner=user)
+    if not account.session_string:
+        return HttpResponse(status=404)
+
+    thumb = request.GET.get('thumb', '1') != '0'
+    cache_dir = os.path.join(dj_settings.MEDIA_ROOT, 'chat_media_cache')
+    try:
+        os.makedirs(cache_dir, exist_ok=True)
+    except Exception:
+        pass
+    suffix = 'thumb' if thumb else 'full'
+    cache_path = os.path.join(
+        cache_dir, f"{account.pk}_{chat_id}_{msg_id}_{suffix}.bin",
+    )
+    mime_path = cache_path + '.mime'
+
+    @sync_to_async
+    def _read_cached():
+        if not os.path.exists(cache_path):
+            return None
+        mime = 'application/octet-stream'
+        try:
+            with open(mime_path, 'r') as f:
+                mime = f.read().strip() or mime
+        except Exception:
+            pass
+        with open(cache_path, 'rb') as f:
+            return f.read(), mime
+
+    cached = await _read_cached()
+    if cached is not None:
+        data, mime = cached
+        resp = HttpResponse(data, content_type=mime)
+        resp['Cache-Control'] = 'private, max-age=86400'
+        return resp
+
+    from jobs.services import download_chat_message_media_for_account
+    data, mime_or_err = await download_chat_message_media_for_account(
+        account, chat_id, msg_id, thumb=thumb,
+    )
+    if data is None:
+        return HttpResponse(f"Media: {mime_or_err}", status=404, content_type='text/plain')
+
+    @sync_to_async
+    def _save_cache():
+        try:
+            with open(cache_path, 'wb') as f:
+                f.write(data)
+            with open(mime_path, 'w') as f:
+                f.write(mime_or_err)
+        except Exception:
+            pass
+    await _save_cache()
+
+    resp = HttpResponse(data, content_type=mime_or_err)
+    resp['Cache-Control'] = 'private, max-age=86400'
+    return resp
 
 
 async def account_dialogs(request, pk):

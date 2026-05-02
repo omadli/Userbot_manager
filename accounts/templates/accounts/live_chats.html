@@ -40,25 +40,24 @@
     </div>
 
     <div class="row g-3">
-        <div class="col-lg-6">
+        <div class="col-lg-6 col-xl-3">
             <div class="card shadow-sm h-100">
                 <div class="card-header bg-white border-bottom py-3 d-flex align-items-center">
                     <i class="bi bi-people-fill text-info me-2"></i>
                     <span class="fw-bold">Guruhlar</span>
                     <span class="badge bg-info bg-opacity-10 text-info border ms-2">{{ groups|length }}</span>
                     <input type="text" class="form-control form-control-sm rounded-pill bg-light border-0 ms-auto chat-search"
-                           data-target=".group-row" placeholder="Qidirish..." style="max-width: 180px;">
+                           data-target=".group-row" placeholder="Qidirish..." style="max-width: 130px;">
                 </div>
                 <div class="card-body p-0" style="max-height: 600px; overflow-y: auto;">
                     {% if groups %}
                     <table class="table table-hover mb-0 align-middle">
                         <thead class="table-light sticky-top">
                             <tr>
-                                <th style="width: 40px;" class="ps-3">
+                                <th style="width: 36px;" class="ps-3">
                                     <input type="checkbox" class="form-check-input toggle-all" data-target=".group-checkbox">
                                 </th>
                                 <th>Nomi</th>
-                                <th class="text-end pe-3" style="width: 90px;">A'zolar</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -69,52 +68,47 @@
                                 </td>
                                 <td>
                                     <a href="{% url 'accounts:account_chat_detail' account.pk g.id %}"
-                                       class="d-flex flex-column text-decoration-none text-dark"
-                                       title="Chatga kirish">
+                                       class="d-flex flex-column text-decoration-none text-dark">
                                         <span class="fw-medium">{{ g.title }}</span>
                                         <small class="text-muted">
                                             {% if g.is_creator %}<span class="badge bg-warning text-dark me-1">creator</span>{% endif %}
                                             {% if g.is_admin %}<span class="badge bg-info bg-opacity-10 text-info border me-1">admin</span>{% endif %}
                                             {% if g.username %}@{{ g.username }}{% endif %}
-                                            {% if g.unread %}<span class="text-danger">· {{ g.unread }} unread</span>{% endif %}
+                                            {% if g.unread %}<span class="text-danger fw-bold ms-1">· {{ g.unread }}</span>{% endif %}
                                         </small>
                                     </a>
-                                </td>
-                                <td class="text-end pe-3 text-muted small">
-                                    {% if g.members %}{{ g.members }}{% else %}—{% endif %}
                                 </td>
                             </tr>
                             {% endfor %}
                         </tbody>
                     </table>
                     {% else %}
-                    <div class="text-center py-5 text-muted">
-                        <i class="bi bi-people fs-1 opacity-25 d-block mb-2"></i>Guruhlar yo'q.
+                    <div class="text-center py-4 text-muted small">
+                        <i class="bi bi-people fs-3 opacity-25 d-block mb-1"></i>Guruhlar yo'q
                     </div>
                     {% endif %}
                 </div>
             </div>
         </div>
 
-        <div class="col-lg-6">
+        <div class="col-lg-6 col-xl-3">
             <div class="card shadow-sm h-100">
                 <div class="card-header bg-white border-bottom py-3 d-flex align-items-center">
                     <i class="bi bi-megaphone-fill text-primary me-2"></i>
                     <span class="fw-bold">Kanallar</span>
                     <span class="badge bg-primary bg-opacity-10 text-primary border ms-2">{{ channels|length }}</span>
                     <input type="text" class="form-control form-control-sm rounded-pill bg-light border-0 ms-auto chat-search"
-                           data-target=".channel-row" placeholder="Qidirish..." style="max-width: 180px;">
+                           data-target=".channel-row" placeholder="Qidirish..." style="max-width: 130px;">
                 </div>
                 <div class="card-body p-0" style="max-height: 600px; overflow-y: auto;">
                     {% if channels %}
                     <table class="table table-hover mb-0 align-middle">
                         <thead class="table-light sticky-top">
                             <tr>
-                                <th style="width: 40px;" class="ps-3">
+                                <th style="width: 36px;" class="ps-3">
                                     <input type="checkbox" class="form-check-input toggle-all" data-target=".channel-checkbox">
                                 </th>
                                 <th>Nomi</th>
-                                <th class="text-end pe-3" style="width: 90px;">Obuna</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -125,27 +119,104 @@
                                 </td>
                                 <td>
                                     <a href="{% url 'accounts:account_chat_detail' account.pk c.id %}"
-                                       class="d-flex flex-column text-decoration-none text-dark"
-                                       title="Kanalni ochish">
+                                       class="d-flex flex-column text-decoration-none text-dark">
                                         <span class="fw-medium">{{ c.title }}</span>
                                         <small class="text-muted">
                                             {% if c.is_creator %}<span class="badge bg-warning text-dark me-1">creator</span>{% endif %}
                                             {% if c.is_admin %}<span class="badge bg-info bg-opacity-10 text-info border me-1">admin</span>{% endif %}
                                             {% if c.username %}@{{ c.username }}{% endif %}
-                                            {% if c.unread %}<span class="text-danger">· {{ c.unread }} unread</span>{% endif %}
+                                            {% if c.unread %}<span class="text-danger fw-bold ms-1">· {{ c.unread }}</span>{% endif %}
                                         </small>
                                     </a>
-                                </td>
-                                <td class="text-end pe-3 text-muted small">
-                                    {% if c.members %}{{ c.members }}{% else %}—{% endif %}
                                 </td>
                             </tr>
                             {% endfor %}
                         </tbody>
                     </table>
                     {% else %}
-                    <div class="text-center py-5 text-muted">
-                        <i class="bi bi-megaphone fs-1 opacity-25 d-block mb-2"></i>Kanallar yo'q.
+                    <div class="text-center py-4 text-muted small">
+                        <i class="bi bi-megaphone fs-3 opacity-25 d-block mb-1"></i>Kanallar yo'q
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6 col-xl-3">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white border-bottom py-3 d-flex align-items-center">
+                    <i class="bi bi-person-fill text-success me-2"></i>
+                    <span class="fw-bold">Shaxsiy chatlar</span>
+                    <span class="badge bg-success bg-opacity-10 text-success border ms-2">{{ dms|length }}</span>
+                    <input type="text" class="form-control form-control-sm rounded-pill bg-light border-0 ms-auto chat-search"
+                           data-target=".dm-row" placeholder="Qidirish..." style="max-width: 130px;">
+                </div>
+                <div class="card-body p-0" style="max-height: 600px; overflow-y: auto;">
+                    {% if dms %}
+                    <table class="table table-hover mb-0 align-middle">
+                        <tbody>
+                            {% for d in dms %}
+                            <tr class="dm-row" data-title="{{ d.title|lower }} {{ d.username|default:''|lower }}">
+                                <td class="ps-3 py-2">
+                                    <a href="{% url 'accounts:account_chat_detail' account.pk d.id %}"
+                                       class="d-flex flex-column text-decoration-none text-dark">
+                                        <span class="fw-medium">
+                                            {{ d.title }}
+                                            {% if d.is_verified %}<i class="bi bi-patch-check-fill text-primary small ms-1"></i>{% endif %}
+                                            {% if d.is_premium %}<i class="bi bi-star-fill text-warning small ms-1"></i>{% endif %}
+                                        </span>
+                                        <small class="text-muted">
+                                            {% if d.is_contact %}<span class="badge bg-success bg-opacity-10 text-success border me-1">kontakt</span>{% endif %}
+                                            {% if d.username %}@{{ d.username }}{% endif %}
+                                            {% if d.unread %}<span class="text-danger fw-bold ms-1">· {{ d.unread }}</span>{% endif %}
+                                        </small>
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}
+                    <div class="text-center py-4 text-muted small">
+                        <i class="bi bi-person fs-3 opacity-25 d-block mb-1"></i>Shaxsiy chat yo'q
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6 col-xl-3">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white border-bottom py-3 d-flex align-items-center">
+                    <i class="bi bi-robot text-secondary me-2"></i>
+                    <span class="fw-bold">Botlar</span>
+                    <span class="badge bg-secondary bg-opacity-10 text-secondary border ms-2">{{ bots|length }}</span>
+                    <input type="text" class="form-control form-control-sm rounded-pill bg-light border-0 ms-auto chat-search"
+                           data-target=".bot-row" placeholder="Qidirish..." style="max-width: 130px;">
+                </div>
+                <div class="card-body p-0" style="max-height: 600px; overflow-y: auto;">
+                    {% if bots %}
+                    <table class="table table-hover mb-0 align-middle">
+                        <tbody>
+                            {% for b in bots %}
+                            <tr class="bot-row" data-title="{{ b.title|lower }} {{ b.username|default:''|lower }}">
+                                <td class="ps-3 py-2">
+                                    <a href="{% url 'accounts:account_chat_detail' account.pk b.id %}"
+                                       class="d-flex flex-column text-decoration-none text-dark">
+                                        <span class="fw-medium">{{ b.title }}</span>
+                                        <small class="text-muted">
+                                            {% if b.username %}@{{ b.username }}{% endif %}
+                                            {% if b.unread %}<span class="text-danger fw-bold ms-1">· {{ b.unread }}</span>{% endif %}
+                                        </small>
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}
+                    <div class="text-center py-4 text-muted small">
+                        <i class="bi bi-robot fs-3 opacity-25 d-block mb-1"></i>Bot yo'q
                     </div>
                     {% endif %}
                 </div>
