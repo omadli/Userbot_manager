@@ -33,18 +33,14 @@
     </div>
 </div>
 
-{# ── Quick Actions: 6 darajaga maksimal qulay yorliqlar ─────────────────── #}
-{# Bulk-action quick cards POST to /accounts/ with select_all_filter=1 +     #}
-{# is_active=True so the server applies the action to every active+spammas #}
-{# account without making the user touch checkboxes or filters first.       #}
 <div class="row g-2 g-md-3 mb-4 quick-actions">
     <div class="col-6 col-md-4 col-lg-2">
         <a href="{% url 'accounts:add_account' %}" class="card border-0 shadow-sm h-100 text-decoration-none text-dark p-3 quick-card">
             <div class="d-flex align-items-center gap-2">
                 <span class="quick-icon bg-primary bg-opacity-10 text-primary"><i class="bi bi-plus-lg"></i></span>
-                <div>
+                <div class="quick-text">
                     <div class="fw-bold small">Yangi akkaunt</div>
-                    <div class="text-muted" style="font-size: 0.7rem;">Login qilish</div>
+                    <div class="text-muted small-sub">Login qilish</div>
                 </div>
             </div>
         </a>
@@ -54,12 +50,12 @@
             {% csrf_token %}
             <input type="hidden" name="bulk_action" value="send_message">
             <input type="hidden" name="select_all_filter" value="1">
-            <button type="submit" class="card border-0 shadow-sm h-100 w-100 text-start text-dark p-3 quick-card border-bottom-0">
+            <button type="submit" class="card border-0 shadow-sm h-100 w-100 text-start text-dark p-3 quick-card">
                 <div class="d-flex align-items-center gap-2">
                     <span class="quick-icon bg-info bg-opacity-10 text-info"><i class="bi bi-chat-dots-fill"></i></span>
-                    <div>
+                    <div class="quick-text">
                         <div class="fw-bold small">Xabar yuborish</div>
-                        <div class="text-muted" style="font-size: 0.7rem;">Aktivlarning hammasi</div>
+                        <div class="text-muted small-sub">Aktivlarning hammasi</div>
                     </div>
                 </div>
             </button>
@@ -73,9 +69,9 @@
             <button type="submit" class="card border-0 shadow-sm h-100 w-100 text-start text-dark p-3 quick-card">
                 <div class="d-flex align-items-center gap-2">
                     <span class="quick-icon bg-warning bg-opacity-10 text-warning"><i class="bi bi-fire"></i></span>
-                    <div>
+                    <div class="quick-text">
                         <div class="fw-bold small">Warming</div>
-                        <div class="text-muted" style="font-size: 0.7rem;">Akkauntlarni isitish</div>
+                        <div class="text-muted small-sub">Akkauntlarni isitish</div>
                     </div>
                 </div>
             </button>
@@ -89,9 +85,9 @@
             <button type="submit" class="card border-0 shadow-sm h-100 w-100 text-start text-dark p-3 quick-card">
                 <div class="d-flex align-items-center gap-2">
                     <span class="quick-icon bg-danger bg-opacity-10 text-danger"><i class="bi bi-door-open-fill"></i></span>
-                    <div>
+                    <div class="quick-text">
                         <div class="fw-bold small">Bo'sh chatdan chiq</div>
-                        <div class="text-muted" style="font-size: 0.7rem;">Admin emas guruhlar</div>
+                        <div class="text-muted small-sub">Admin emas guruhlar</div>
                     </div>
                 </div>
             </button>
@@ -101,9 +97,9 @@
         <a href="{% url 'jobs:task_list' %}" class="card border-0 shadow-sm h-100 text-decoration-none text-dark p-3 quick-card">
             <div class="d-flex align-items-center gap-2">
                 <span class="quick-icon bg-success bg-opacity-10 text-success"><i class="bi bi-activity"></i></span>
-                <div>
+                <div class="quick-text">
                     <div class="fw-bold small">Vazifalar</div>
-                    <div class="text-muted" style="font-size: 0.7rem;">Ishlayotganlar</div>
+                    <div class="text-muted small-sub">Ishlayotganlar</div>
                 </div>
             </div>
         </a>
@@ -112,9 +108,9 @@
         <a href="{% url 'jobs:stats_dashboard' %}" class="card border-0 shadow-sm h-100 text-decoration-none text-dark p-3 quick-card">
             <div class="d-flex align-items-center gap-2">
                 <span class="quick-icon bg-secondary bg-opacity-10 text-secondary"><i class="bi bi-bar-chart-fill"></i></span>
-                <div>
+                <div class="quick-text">
                     <div class="fw-bold small">Statistika</div>
-                    <div class="text-muted" style="font-size: 0.7rem;">Grafiklar</div>
+                    <div class="text-muted small-sub">Grafiklar</div>
                 </div>
             </div>
         </a>
@@ -125,6 +121,7 @@
     transition: transform 0.15s ease, box-shadow 0.15s ease;
     cursor: pointer;
     background: #fff;
+    min-height: 64px;
 }
 .quick-card:hover {
     transform: translateY(-2px);
@@ -139,10 +136,16 @@
     font-size: 1.05rem;
     flex-shrink: 0;
 }
+.quick-text { min-width: 0; }
+.quick-text .small-sub { font-size: 0.7rem; line-height: 1.2; }
+@media (max-width: 575.98px) {
+    .quick-card { padding: 0.6rem !important; }
+    .quick-icon { width: 32px; height: 32px; font-size: 0.95rem; }
+    .quick-text .small-sub { display: none; }
+}
 </style>
 
 <div class="row">
-    <!-- Accounts List -->
     <div class="col-lg-9 order-2 order-lg-1">
         <form method="post" action="{% url 'accounts:dashboard' %}">
             {% csrf_token %}
@@ -151,7 +154,6 @@
                 <div class="card-header bg-white border-bottom py-3 d-flex flex-wrap justify-content-between align-items-center">
                     <div class="d-flex align-items-center gap-2 flex-wrap">
                         <span class="fw-bold text-dark"><i class="bi bi-list-task me-2"></i>Maxsus Harakatlar</span>
-                        {# "Select all matching filter" — when set, server ignores per-row checkboxes. #}
                         <input type="hidden" name="select_all_filter" id="selectAllFilterInput" value="0">
                         <button type="button" id="selectAllFilterBtn"
                                 class="btn btn-sm btn-outline-primary rounded-pill px-3 fw-medium"
@@ -283,7 +285,6 @@
                                     <span class="badge bg-primary bg-opacity-10 text-primary border border-primary rounded-pill px-2 fs-6" title="Kanallar soni">Kanal: {{ account.channels_count|default:0 }}</span>
                                 </td>
                                 <td>
-                                    {# Inline tag edit: clicking opens the modal pre-filled with current tags #}
                                     <div class="d-flex flex-wrap gap-1 tag-cell"
                                          data-account-id="{{ account.id }}"
                                          data-current-tags="{% for t in account.tags.all %}{{ t.id }}{% if not forloop.last %},{% endif %}{% endfor %}"
@@ -317,9 +318,6 @@
                                            class="btn btn-sm btn-primary fw-medium border-0 px-3">
                                             <i class="bi bi-person-gear me-1"></i> Batafsil
                                         </a>
-                                        {# "Qayta kirish" only matters when the session is dead — for healthy
-                                           accounts it's noise. The Aktivmas warning at the top still funnels
-                                           users here when there's a re-login backlog. #}
                                         {% if not account.is_active %}
                                         <a href="{% url 'accounts:relogin_account' account.pk %}"
                                            class="btn btn-sm btn-info text-white fw-medium border-0 px-3">
@@ -331,9 +329,6 @@
 
 
                             </tr>
-                            
-                            <!-- Modals moved outside scope -->
-                            
                             {% empty %}
                             <tr>
                                 <td colspan="11" class="text-center py-5 text-muted">
@@ -349,7 +344,6 @@
         </form>
     </div>
     
-    <!-- Filters Sidebar -->
     <div class="col-lg-3 order-1 order-lg-2 mb-4">
         <form method="get" action="{% url 'accounts:dashboard' %}" class="card p-4 shadow-sm border-0 sticky-top" style="top: 20px;">
             <h6 class="fw-bold text-uppercase text-muted mb-3" style="font-size: 0.85rem; letter-spacing: 0.5px;">
@@ -377,11 +371,6 @@
             });
         });
 
-        // "Filterdagilarni N" tugmasi — server filter qo'llaganidagi
-        // barcha akkauntlarni belgilash. UI'da har bir checkbox'ni ham
-        // belgilab qo'yamiz, shuning uchun action submit'da hidden flag
-        // bilan birga real id ro'yxat ham bormaydi (lekin server flagni
-        // ko'rib selected_ids ni o'zi to'ldiradi).
         const selectAllFilterBtn = document.getElementById('selectAllFilterBtn');
         const selectAllFilterInput = document.getElementById('selectAllFilterInput');
         if (selectAllFilterBtn && selectAllFilterInput) {
@@ -456,7 +445,6 @@
     /* Prevent text selection when clicking switches rapidly */
     .form-check-label { user-select: none; }
 </style>
-<!-- Inline Tag Editor Modal — single instance, opened by JS on .tag-cell click -->
 <div class="modal fade" id="tagsEditModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content border-0 shadow">
@@ -563,7 +551,6 @@
 </script>
 
 {% for account in accounts %}
-<!-- Edit Modal -->
 <div class="modal fade" id="editModal{{ account.id }}" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content border-0 shadow">

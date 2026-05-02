@@ -213,7 +213,6 @@
         <li class="nav-item">
             <a href="{% url 'jobs:task_list' %}" class="nav-link {% if request.resolver_match.namespace == 'jobs' and 'task' in request.resolver_match.url_name %}active{% endif %}">
                 <i class="bi bi-activity"></i> Vazifalar
-                {# Live counter — updated by the running-summary poller every ~10s. #}
                 <span id="runningTaskBadge" class="badge bg-primary rounded-pill ms-2 d-none" title="Hozir ishlayotgan vazifalar"></span>
             </a>
         </li>
@@ -272,12 +271,9 @@
     </div>
 {% endif %}
 
-<!-- Toast container: live notifications when a task finishes. Bootstrap
-     manages stacking; we just inject toasts as new tasks transition. -->
 {% if user.is_authenticated %}
 <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1080;" id="toastStack"></div>
 
-<!-- Command palette (Ctrl/Cmd+K) — fuzzy search over routes + bulk actions -->
 <div class="modal fade" id="cmdkModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered" style="max-width: 600px;">
     <div class="modal-content border-0 shadow-lg rounded-4">
@@ -303,9 +299,6 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 (function(){
-    // Mobile sidebar toggle: open via hamburger, close via backdrop or
-    // any nav-link click. Keeps it simple — Bootstrap offcanvas would
-    // also work but our sidebar is already a fixed-position element.
     const toggle = document.getElementById('sidebarToggle');
     const backdrop = document.getElementById('sidebarBackdrop');
     const sidebar = document.getElementById('sidebar');
@@ -320,11 +313,9 @@
     backdrop.addEventListener('click', close);
     sidebar.querySelectorAll('a.nav-link').forEach(a => {
         a.addEventListener('click', () => {
-            // Only close on small screens — desktop sidebar is always open.
             if (window.matchMedia('(max-width: 991.98px)').matches) close();
         });
     });
-    // Close if user resizes back to desktop
     window.addEventListener('resize', () => {
         if (!window.matchMedia('(max-width: 991.98px)').matches) close();
     });
@@ -333,11 +324,6 @@
 
 {% if user.is_authenticated %}
 <script>
-// ── Background task watcher ──────────────────────────────────────────────
-// Polls /jobs/running-summary/ every 10s. Updates the sidebar badge with
-// pending+running count and pops a toast for any task that just transitioned
-// to completed/failed/cancelled. Cursor (last seen pk) lives in
-// localStorage so toasts don't repeat across page navigations.
 (function(){
     const badge = document.getElementById('runningTaskBadge');
     const stack = document.getElementById('toastStack');
@@ -383,16 +369,12 @@
             const r = await fetch(`/jobs/running-summary/?since=${cursor}`, { credentials: 'same-origin' });
             if (!r.ok) return;
             const data = await r.json();
-            // Sidebar badge: hide when zero, show count otherwise.
             if (data.running > 0) {
                 badge.textContent = data.running;
                 badge.classList.remove('d-none');
             } else {
                 badge.classList.add('d-none');
             }
-            // Spawn toasts in chronological order so the newest sits on top.
-            // First-load (cursor was 0) suppresses toasts — the user doesn't
-            // want yesterday's "done" pings every time they open a new tab.
             if (!suppressToasts && data.finished && data.finished.length) {
                 data.finished.slice().reverse().forEach(spawnToast);
             }
@@ -401,21 +383,15 @@
                 localStorage.setItem(CURSOR_KEY, String(cursor));
             }
         } catch (e) {
-            // Network blip — just try again next tick.
         }
     }
 
-    // First tick: just seed the cursor + badge, no historical toasts.
-    poll(/*suppressToasts=*/ cursor === 0);
+    poll(cursor === 0);
     setInterval(() => poll(false), 10000);
 })();
 </script>
 
 <script>
-// ── Command palette (Ctrl/Cmd+K) ─────────────────────────────────────────
-// Static command index — server URLs are pre-resolved by Django, so the
-// JS just renders/filters/navigates. Each row's `keywords` includes both
-// Uzbek and a few English aliases so users can type either.
 (function(){
     const modalEl = document.getElementById('cmdkModal');
     if (!modalEl || typeof bootstrap === 'undefined') return;
@@ -424,7 +400,6 @@
     const list = document.getElementById('cmdkResults');
 
     const COMMANDS = [
-        // Navigatsiya
         { label: 'Akkauntlar',         href: '{% url "accounts:dashboard" %}',     icon: 'bi-person-lines-fill', keywords: 'akkaunt accounts dashboard bosh' },
         { label: 'Yangi akkaunt qo\'shish', href: '{% url "accounts:add_account" %}', icon: 'bi-plus-circle-fill', keywords: 'yangi qo\'shish add new account login' },
         { label: 'Vazifalar',          href: '{% url "jobs:task_list" %}',         icon: 'bi-activity', keywords: 'vazifa task jobs queue' },
@@ -435,7 +410,6 @@
         { label: 'Proxy\'lar',         href: '{% url "accounts:proxy_list" %}',    icon: 'bi-shield-lock-fill', keywords: 'proxy proxylar' },
         { label: 'Nom pool\'lar',      href: '{% url "jobs:pool_list" %}',         icon: 'bi-collection-fill', keywords: 'nom pool name pools' },
         { label: 'Profil',             href: '{% url "accounts:profile" %}',       icon: 'bi-person-gear', keywords: 'profil profile parol password' },
-        // Aktivlarning hammasiga bulk action — POST flag bilan dashboard'ga
         { label: 'Hammaga xabar yuborish (aktivlar)', action: 'send_message',    icon: 'bi-chat-dots-fill', keywords: 'xabar yubor send message broadcast' },
         { label: 'Warming run (aktivlar)',            action: 'account_warming', icon: 'bi-fire', keywords: 'warming isit faol activity' },
         { label: 'Bo\'sh chatlardan chiqish (guruh)', action: 'leave_groups',    icon: 'bi-door-open-fill', keywords: 'chiqish leave guruh dead' },
@@ -451,8 +425,6 @@
     }
 
     function runAction(action) {
-        // Builds a hidden form that submits to /accounts/?is_active=True&is_spam=False
-        // with bulk_action + select_all_filter — the same path the Quick Actions take.
         const f = document.createElement('form');
         f.method = 'post';
         f.action = '{% url "accounts:dashboard" %}?is_active=True&is_spam=False';
@@ -541,8 +513,6 @@
         input.focus();
     });
 
-    // Open with Ctrl+K / Cmd+K from anywhere except text inputs (so the user
-    // can still type "k" inside a textarea without triggering the palette).
     document.addEventListener('keydown', e => {
         if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
             e.preventDefault();

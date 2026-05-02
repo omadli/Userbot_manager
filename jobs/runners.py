@@ -123,6 +123,26 @@ class TaskRunner:
         ).afirst()
         return bool(val)
 
+    async def cancellable_sleep(self, seconds):
+        """Sleep that wakes early when the user clicks "Bekor qilish".
+
+        Returns True if cancellation was observed — caller MUST stop work
+        immediately. Polls cancel_requested every ~2s instead of blocking
+        through the full duration; previously a 90s inter-item pause kept
+        the runner unresponsive to cancellation for the whole window.
+        """
+        if seconds <= 0:
+            return await self.is_cancelled()
+        poll = 2.0
+        elapsed = 0.0
+        while elapsed < seconds:
+            chunk = min(poll, seconds - elapsed)
+            await asyncio.sleep(chunk)
+            elapsed += chunk
+            if await self.is_cancelled():
+                return True
+        return False
+
     async def quota_ok(self, account):
         """
         Reserve one quota slot before an operation. When the task opted out
@@ -291,14 +311,14 @@ class CreateGroupsRunner(TaskRunner):
 
                     await self._create_one(account, title, name_pk, idx, len(titles), megagroup, send_welcome)
 
-                    # Inter-operation pause (not after the last one).
                     if idx < len(titles):
                         delay = random.uniform(delay_min, delay_max)
                         await self.log(
                             'info', f"{delay:.1f}s kutilmoqda…",
                             account=account, step='sleep',
                         )
-                        await asyncio.sleep(delay)
+                        if await self.cancellable_sleep(delay):
+                            return
 
                 await self.log('info', f"Yakunlandi ({len(titles)} urinish)",
                                account=account, step='finished')
@@ -351,8 +371,9 @@ class CreateGroupsRunner(TaskRunner):
                     account=account, step='flood_wait',
                     telegram_error='FloodWaitError',
                 )
-                await asyncio.sleep(wait + 1)
-                continue  # retry same title
+                if await self.cancellable_sleep(wait + 1):
+                    return
+                continue
 
             if result['success']:
                 try:
@@ -530,7 +551,8 @@ class JoinChannelRunner(TaskRunner):
                             'info', f"{delay:.1f}s kutilmoqda…",
                             account=account, step='sleep',
                         )
-                        await asyncio.sleep(delay)
+                        if await self.cancellable_sleep(delay):
+                            return
 
                 await self.log('info', f"Yakunlandi ({joined}/{len(targets)} urinish)",
                                account=account, step='finished')
@@ -576,7 +598,8 @@ class JoinChannelRunner(TaskRunner):
                     account=account, step='flood_wait',
                     telegram_error='FloodWaitError',
                 )
-                await asyncio.sleep(wait + 1)
+                if await self.cancellable_sleep(wait + 1):
+                    return
                 continue
 
             if result['success']:
@@ -885,7 +908,8 @@ class BoostViewsRunner(TaskRunner):
                             'info', f"{delay:.1f}s kutilmoqda (raund {r}/{rounds})",
                             account=account, step='sleep',
                         )
-                        await asyncio.sleep(delay)
+                        if await self.cancellable_sleep(delay):
+                            return
 
         await asyncio.gather(
             *[process_account(a) for a in accounts],
@@ -924,7 +948,8 @@ class BoostViewsRunner(TaskRunner):
                     account=account, step='flood_wait',
                     telegram_error='FloodWaitError',
                 )
-                await asyncio.sleep(wait + 1)
+                if await self.cancellable_sleep(wait + 1):
+                    return
                 continue
 
             if result['success']:
@@ -1060,7 +1085,8 @@ class ReactToPostRunner(TaskRunner):
                         delay = random.uniform(delay_min, delay_max)
                         await self.log('info', f"{delay:.1f}s pauza",
                                        account=account, step='sleep')
-                        await asyncio.sleep(delay)
+                        if await self.cancellable_sleep(delay):
+                            return
 
         await asyncio.gather(*[process_account(a) for a in accounts], return_exceptions=True)
 
@@ -1091,7 +1117,8 @@ class ReactToPostRunner(TaskRunner):
                 await self.log('warning', f"FloodWait {wait}s",
                                account=account, step='flood_wait',
                                telegram_error='FloodWaitError')
-                await asyncio.sleep(wait + 1)
+                if await self.cancellable_sleep(wait + 1):
+                    return
                 continue
 
             if result['success']:
@@ -1171,7 +1198,8 @@ class _SimplePerAccountRunner(TaskRunner):
                     return
                 # Stagger the start slightly so all workers don't fire at t=0
                 if order > 0:
-                    await asyncio.sleep(random.uniform(delay_min, delay_max))
+                    if await self.cancellable_sleep(random.uniform(delay_min, delay_max)):
+                        return
 
                 if min_age_minutes > 0:
                     age_min = (timezone.now() - account.created_at).total_seconds() / 60
@@ -1209,7 +1237,8 @@ class _SimplePerAccountRunner(TaskRunner):
                         await self.log('warning', f"FloodWait {wait}s",
                                        account=account, step='flood_wait',
                                        telegram_error='FloodWaitError')
-                        await asyncio.sleep(wait + 1)
+                        if await self.cancellable_sleep(wait + 1):
+                            return
                         continue
 
                     if result['success']:
@@ -1403,7 +1432,8 @@ class RunScriptRunner(TaskRunner):
                 if await self.is_cancelled():
                     return
                 if order > 0:
-                    await asyncio.sleep(random.uniform(delay_min, delay_max))
+                    if await self.cancellable_sleep(random.uniform(delay_min, delay_max)):
+                        return
 
                 if min_age_minutes > 0:
                     age_min = (timezone.now() - account.created_at).total_seconds() / 60
@@ -1567,7 +1597,8 @@ class AccountWarmingRunner(TaskRunner):
                             f"Dialoglarni olishda FloodWait {e.seconds}s",
                             account=account, step='flood_wait',
                             telegram_error='FloodWaitError')
-                        await asyncio.sleep(int(e.seconds) + 1)
+                        if await self.cancellable_sleep(int(e.seconds) + 1):
+                            return
                         dialogs = []
                     ops_done += 1
 
@@ -1594,7 +1625,8 @@ class AccountWarmingRunner(TaskRunner):
                                     f"FloodWait {wait}s",
                                     account=account, step='flood_wait',
                                     telegram_error='FloodWaitError')
-                                await asyncio.sleep(wait + 1)
+                                if await self.cancellable_sleep(wait + 1):
+                                    return
                                 continue
                             except Exception:
                                 # Dialog might have become inaccessible — skip silently
@@ -1606,7 +1638,8 @@ class AccountWarmingRunner(TaskRunner):
                                     account=account, step='reading')
 
                         pause = random.uniform(pause_min, pause_max)
-                        await asyncio.sleep(pause)
+                        if await self.cancellable_sleep(pause):
+                            return
 
                     await self.log('success',
                         f"✓ Warming yakunlandi: {ops_done} o'qish",
@@ -1764,7 +1797,8 @@ class SendMessageRunner(TaskRunner):
                                 await self.incr_done(success=False)
                                 break
                             flood_retries += 1
-                            await asyncio.sleep(wait + 1)
+                            if await self.cancellable_sleep(wait + 1):
+                                return
                             continue
 
                         if result['success']:
@@ -1786,7 +1820,8 @@ class SendMessageRunner(TaskRunner):
                         break
 
                     if idx < len(targets):
-                        await asyncio.sleep(random.uniform(delay_min, delay_max))
+                        if await self.cancellable_sleep(random.uniform(delay_min, delay_max)):
+                            return
 
         await asyncio.gather(*[process_account(a) for a in accounts], return_exceptions=True)
 
@@ -1918,7 +1953,8 @@ class UpdateProfileRunner(TaskRunner):
                                    telegram_error=result.get('error_type', ''))
                     await self.incr_done(success=False)
 
-                await asyncio.sleep(random.uniform(delay_min, delay_max))
+                if await self.cancellable_sleep(random.uniform(delay_min, delay_max)):
+                    return
 
         await asyncio.gather(*[process_account(a) for a in accounts], return_exceptions=True)
 

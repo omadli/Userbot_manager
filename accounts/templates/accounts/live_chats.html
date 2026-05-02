@@ -16,7 +16,6 @@
 <form method="post" action="{% url 'accounts:account_live_chats' account.pk %}" id="chats-form">
     {% csrf_token %}
 
-    <!-- Sticky action bar -->
     <div class="card shadow-sm mb-3 position-sticky" style="top: 16px; z-index: 10;">
         <div class="card-body py-2 d-flex flex-wrap align-items-center gap-3">
             <span class="fw-bold small text-muted">
@@ -41,7 +40,6 @@
     </div>
 
     <div class="row g-3">
-        <!-- Guruhlar -->
         <div class="col-lg-6">
             <div class="card shadow-sm h-100">
                 <div class="card-header bg-white border-bottom py-3 d-flex align-items-center">
@@ -98,7 +96,6 @@
             </div>
         </div>
 
-        <!-- Kanallar -->
         <div class="col-lg-6">
             <div class="card shadow-sm h-100">
                 <div class="card-header bg-white border-bottom py-3 d-flex align-items-center">
@@ -173,7 +170,6 @@
         if (e.target.classList.contains('chat-checkbox')) refresh();
     });
 
-    // Header "select all" within a column
     form.querySelectorAll('.toggle-all').forEach(box => {
         box.addEventListener('change', () => {
             form.querySelectorAll(box.dataset.target).forEach(cb => cb.checked = box.checked);
@@ -191,7 +187,6 @@
         allCb().forEach(cb => cb.checked = false); refresh();
     };
 
-    // Live filter
     document.querySelectorAll('.chat-search').forEach(inp => {
         inp.addEventListener('input', () => {
             const q = inp.value.toLowerCase();

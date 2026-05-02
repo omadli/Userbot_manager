@@ -190,10 +190,20 @@ class Task(models.Model):
         remaining = self.total - self.done
         if remaining <= 0:
             return 0
+
+        p = self.params or {}
+        delay_min = float(p.get('delay_min_sec', 0) or 0)
+        delay_max = float(p.get('delay_max_sec', 0) or 0)
+        avg_pause = (delay_min + delay_max) / 2
+        concurrency = max(1, int(p.get('concurrency', 1) or 1))
+        floor_rate = avg_pause / concurrency if avg_pause > 0 else 0
+
         rate_ema = (self.stats or {}).get('_eta_rate_ema')
         if rate_ema and rate_ema > 0:
-            return int(rate_ema * remaining)
-        rate = self.elapsed_seconds / self.done
+            rate = max(rate_ema, floor_rate)
+        else:
+            avg_rate = self.elapsed_seconds / self.done
+            rate = max(avg_rate, floor_rate)
         return int(rate * remaining)
 
     @property
