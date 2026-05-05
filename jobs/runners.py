@@ -606,6 +606,10 @@ class JoinChannelRunner(TaskRunner):
                 if result.get('already_member'):
                     msg = f"✓ Allaqachon a'zo: {target}"
                     step = 'already_member'
+                elif result.get('request_sent'):
+                    title = result.get('chat_title') or target
+                    msg = f"📨 So'rov yuborildi (admin tasdig'ini kutyapti): {title}"
+                    step = 'request_sent'
                 else:
                     title = result.get('chat_title') or target
                     msg = f"✓ Qo'shildi: {title}"

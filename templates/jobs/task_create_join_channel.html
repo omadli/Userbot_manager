@@ -5,8 +5,8 @@
         <a href="{% url 'accounts:dashboard' %}" class="text-muted text-decoration-none small">
             <i class="bi bi-arrow-left me-1"></i>Akkauntlar
         </a>
-        <h2 class="fw-bold mb-1 mt-1"><i class="bi bi-box-arrow-in-right text-primary me-2"></i>Kanalga qo'shilish vazifasi</h2>
-        <p class="text-muted mb-0">Tanlangan akkauntlar ko'rsatilgan kanal/guruhlarga qo'shilishadi</p>
+        <h2 class="fw-bold mb-1 mt-1"><i class="bi bi-box-arrow-in-right text-primary me-2"></i>Chatlarga qo'shilish vazifasi</h2>
+        <p class="text-muted mb-0">Tanlangan akkauntlar ko'rsatilgan chatlarga qo'shilishadi — kanal/guruh, public/private, istagancha</p>
     </div>
 </div>
 
@@ -21,15 +21,17 @@
                 <small class="text-muted ms-2">har qatorga bitta</small>
             </div>
             <div class="card-body">
-                <textarea name="targets" rows="10" required
+                <textarea name="targets" rows="12" required
                           class="form-control font-monospace"
-                          placeholder="@channelname&#10;https://t.me/channelname&#10;https://t.me/+hash&#10;https://t.me/joinchat/hash"></textarea>
+                          placeholder="@channelname&#10;@groupname&#10;https://t.me/channelname&#10;https://t.me/+hash&#10;https://t.me/joinchat/hash"></textarea>
                 <div class="mt-2 text-muted small">
-                    <strong>Qo'llab-quvvatlanadigan formatlar:</strong>
+                    <strong>Kanal yoki guruh, public yoki private — istalgancha kiriting (har qatorga bittadan):</strong>
                     <code>@username</code>,
                     <code>t.me/username</code>,
                     <code>t.me/+hash</code> (maxfiy invite),
-                    <code>t.me/joinchat/hash</code> (eski format)
+                    <code>t.me/joinchat/hash</code> (eski format).
+                    Admin tasdig'ini talab qiladigan chatda <strong>qo'shilish so'rovi</strong> avtomatik yuboriladi.
+                    FloodWait kelsa, shu akkaunt belgilangan vaqtni kutadi va qayta urinib ko'radi.
                 </div>
             </div>
         </div>
@@ -84,6 +86,8 @@
                 <ul class="mb-0 mt-2 ps-3">
                     <li>Har akkaunt maksimal ~500 ta chatda bo'la oladi — oshirsangiz <code>ChannelsTooMuch</code> ushlanadi</li>
                     <li>Muddati tugagan invite linklar log'da "InviteHashExpired" deb belgilanadi</li>
+                    <li>Admin tasdig'ini talab qiladigan chatda log'da "📨 So'rov yuborildi" yoziladi — kelajakda admin qabul qilsa qo'shiladi</li>
+                    <li>FloodWait — akkaunt belgilangan sekundni kutadi (boshqa akkauntlar parallel ishlashda davom etadi), keyin shu chatga qayta urinadi</li>
                     <li>Qo'shilish pauzalar 45-120 s — tez qo'shilish sessiyani xavfga qo'yadi</li>
                 </ul>
             </div>

@@ -59,6 +59,11 @@ from telethon.errors import (
     MessageNotModifiedError,
     BotResponseTimeoutError,
 )
+try:
+    from telethon.errors import InviteRequestSentError
+except ImportError:
+    class InviteRequestSentError(Exception):
+        pass
 
 from accounts.services import get_client, get_client_for_account
 from accounts.models import Account
@@ -362,6 +367,7 @@ async def join_chat_for_account(account, target):
 
         chat = None
         already = False
+        request_sent = False
 
         if kind == 'username':
             try:
@@ -385,24 +391,29 @@ async def join_chat_for_account(account, target):
             except UserAlreadyParticipantError:
                 chat = entity
                 already = True
+            except InviteRequestSentError:
+                chat = entity
+                request_sent = True
 
         else:  # invite
             try:
                 result = await client(ImportChatInviteRequest(payload))
                 chat = result.chats[0] if result.chats else None
             except UserAlreadyParticipantError:
-                # Telethon surfaces this via the invite endpoint; we can't
-                # resolve the chat without the hash re-lookup.
                 chat = None
                 already = True
+            except InviteRequestSentError:
+                chat = None
+                request_sent = True
 
         telegram_id = int(chat.id) if chat is not None else None
         return {
             'success': True,
             'already_member': already,
+            'request_sent': request_sent,
             'telegram_id': telegram_id,
             'chat_title': getattr(chat, 'title', None) if chat is not None else None,
-            'invite_link': None,  # joining doesn't give us an invite link
+            'invite_link': None,
             'error': '',
             'error_type': '',
             'stop_account': False,
