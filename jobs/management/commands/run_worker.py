@@ -5,21 +5,28 @@ Runs in a separate terminal:
 
     python manage.py run_worker
     python manage.py run_worker --max-concurrency 10
+    python manage.py run_worker --reset-stuck    # legacy: mark interrupted as failed
 
-Polls jobs_task. Up to `--max-concurrency` tasks run in parallel (each
-spawned as its own asyncio.Task on the worker's event loop). The DB
-claim is atomic (`aupdate(status='running')`), so even running multiple
-worker processes is safe — they just contend less if you bump the
-in-process concurrency instead.
+By default, on startup the worker resumes any tasks left in `running`
+from a previous (crashed/restarted) worker — they get flipped back to
+`pending`, their progress counters re-derived from TaskCheckpoint rows,
+and the next claim picks them up. Runners check `is_completed(key)`
+per item so already-finished work is skipped.
+
+Up to `--max-concurrency` tasks run in parallel inside this worker
+(each as its own asyncio.Task). The DB claim is atomic, so even
+multiple worker processes are safe — they just contend less if you
+bump in-process concurrency instead.
 """
 import asyncio
 import copy
 
+from asgiref.sync import sync_to_async
 from django.core.management.base import BaseCommand
 from django.db.models import Q
 from django.utils import timezone
 
-from jobs.models import Task
+from jobs.models import Task, TaskCheckpoint
 from jobs.runners import RUNNERS
 
 
@@ -37,7 +44,7 @@ class Command(BaseCommand):
         )
         parser.add_argument(
             '--reset-stuck', action='store_true',
-            help="On startup, flip any 'running' tasks back to 'failed'",
+            help="Mark any 'running' tasks as failed instead of resuming them",
         )
 
     def handle(self, *args, **options):
@@ -51,12 +58,14 @@ class Command(BaseCommand):
             if n:
                 stuck.update(
                     status='failed',
-                    error='Worker restarted while task was running',
+                    error='Worker restarted; --reset-stuck',
                     finished_at=timezone.now(),
                 )
                 self.stdout.write(self.style.WARNING(
-                    f"Reset {n} stuck running task(s) → failed"
+                    f"Reset {n} running task(s) → failed (--reset-stuck)"
                 ))
+        else:
+            self._resume_orphans()
 
         self.stdout.write(self.style.SUCCESS(
             f"Worker started — concurrency={max_concurrency}, idle poll={interval}s. "
@@ -67,6 +76,28 @@ class Command(BaseCommand):
             asyncio.run(self._loop(interval, max_concurrency))
         except KeyboardInterrupt:
             self.stdout.write(self.style.WARNING("\nStopped by user (Ctrl+C)"))
+
+    def _resume_orphans(self):
+        """Tasks left in 'running' from a crashed worker → flip to 'pending'
+        and re-derive done counters from checkpoints, so the runner picks
+        them up and skips already-finished items via is_completed()."""
+        orphans = list(Task.objects.filter(status='running'))
+        if not orphans:
+            return
+        for t in orphans:
+            n_done = TaskCheckpoint.objects.filter(task=t).count()
+            Task.objects.filter(pk=t.pk).update(
+                status='pending',
+                started_at=None,
+                done=n_done,
+                success_count=n_done,
+                error_count=0,
+                pause_requested=False,
+            )
+        self.stdout.write(self.style.SUCCESS(
+            f"Resumed {len(orphans)} interrupted task(s) — they'll continue "
+            f"from where they stopped"
+        ))
 
     async def _loop(self, interval, max_concurrency):
         running: set[asyncio.Task] = set()
@@ -93,7 +124,7 @@ class Command(BaseCommand):
                 running.add(aio_task)
 
             if running:
-                done, _ = await asyncio.wait(
+                await asyncio.wait(
                     running, timeout=min(interval, 1.0),
                     return_when=asyncio.FIRST_COMPLETED,
                 )
@@ -113,7 +144,9 @@ class Command(BaseCommand):
             )
             return
 
-        self.stdout.write(f"[{self._ts()}] ▶ Task #{task.pk} ({task.kind})")
+        is_resume = (task.done > 0)
+        prefix = "↻ resume" if is_resume else "▶"
+        self.stdout.write(f"[{self._ts()}] {prefix} Task #{task.pk} ({task.kind}){' — ' + str(task.done) + ' bajarilgan' if is_resume else ''}")
         try:
             runner = runner_cls(task)
             await runner.run()
@@ -162,7 +195,7 @@ class Command(BaseCommand):
         finished = await Task.objects.filter(pk=finished_pk).afirst()
         if finished is None or not finished.recurring_cron:
             return
-        if finished.status == 'cancelled' or finished.cancel_requested:
+        if finished.status in ('cancelled', 'paused') or finished.cancel_requested:
             return
 
         base = finished.finished_at or timezone.now()

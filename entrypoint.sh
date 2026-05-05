@@ -66,8 +66,8 @@ case "$ROLE" in
 
     worker)
         wait_for_postgres
-        echo "[entrypoint] starting background worker (concurrency=${WORKER_CONCURRENCY:-5})"
-        exec python manage.py run_worker --reset-stuck \
+        echo "[entrypoint] starting background worker (concurrency=${WORKER_CONCURRENCY:-5}); resuming any interrupted tasks"
+        exec python manage.py run_worker \
             --max-concurrency "${WORKER_CONCURRENCY:-5}"
         ;;
 

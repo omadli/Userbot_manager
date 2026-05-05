@@ -111,6 +111,7 @@ class Task(models.Model):
         ('completed', 'Yakunlandi'),
         ('failed', 'Xato'),
         ('cancelled', 'Bekor qilindi'),
+        ('paused', 'Pauza'),
     ]
 
     kind = models.CharField(max_length=32, choices=KIND_CHOICES, verbose_name="Turi")
@@ -155,6 +156,7 @@ class Task(models.Model):
     error = models.TextField(blank=True, default='', verbose_name="Umumiy xato")
 
     cancel_requested = models.BooleanField(default=False, verbose_name="Bekor qilish so'raldi")
+    pause_requested = models.BooleanField(default=False, verbose_name="Pauza so'raldi")
 
     created_at = models.DateTimeField(auto_now_add=True)
     started_at = models.DateTimeField(null=True, blank=True)
@@ -209,6 +211,18 @@ class Task(models.Model):
     @property
     def is_finished(self):
         return self.status in ('completed', 'failed', 'cancelled')
+
+    @property
+    def is_paused(self):
+        return self.status == 'paused'
+
+    @property
+    def can_pause(self):
+        return self.status in ('pending', 'running')
+
+    @property
+    def can_resume(self):
+        return self.status == 'paused'
 
     @property
     def is_scheduled_future(self):
@@ -277,3 +291,25 @@ class TaskEvent(models.Model):
 
     def __str__(self):
         return f"[{self.level}] {self.message[:60]}"
+
+
+class TaskCheckpoint(models.Model):
+    """Per-item completion marker so a task can resume after a worker
+    restart without redoing already-finished items.
+
+    `key` is runner-defined — typically '<account_id>-<item_idx>' or
+    just '<account_id>' for per-account-only runners. The unique
+    constraint makes concurrent inserts safe under parallel workers.
+    """
+    task = models.ForeignKey(
+        Task, on_delete=models.CASCADE, related_name='checkpoints',
+        verbose_name="Vazifa",
+    )
+    key = models.CharField(max_length=128, verbose_name="Kalit")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [('task', 'key')]
+        indexes = [models.Index(fields=['task', 'key'])]
+        verbose_name = "Vazifa checkpoint"
+        verbose_name_plural = "Vazifa checkpointlari"

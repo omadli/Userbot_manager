@@ -400,6 +400,16 @@ async def task_list(request):
                     cancel_requested=True
                 )
                 messages.success(request, f"Task #{pk} bekor qilish so'raldi")
+            elif action == 'pause':
+                await Task.objects.filter(pk=pk, owner=user, status__in=['pending', 'running']).aupdate(
+                    pause_requested=True
+                )
+                messages.success(request, f"Task #{pk} pauza qilish so'raldi — runner keyingi qadamda to'xtaydi")
+            elif action == 'resume':
+                await Task.objects.filter(pk=pk, owner=user, status='paused').aupdate(
+                    status='pending', pause_requested=False, started_at=None,
+                )
+                messages.success(request, f"Task #{pk} davom ettirildi")
         return redirect('jobs:task_list')
 
     tasks = await _list_tasks(user)
@@ -1690,9 +1700,25 @@ async def task_detail(request, pk):
 
     if request.method == 'POST':
         action = request.POST.get('action')
-        if action == 'cancel' and task.status in ('pending', 'running'):
-            await Task.objects.filter(pk=pk, owner=user).aupdate(cancel_requested=True)
-            messages.success(request, "Bekor qilish so'raldi — worker keyingi qadamda to'xtaydi")
+        if action == 'cancel' and task.status in ('pending', 'running', 'paused'):
+            await Task.objects.filter(pk=pk, owner=user).aupdate(
+                cancel_requested=True,
+            )
+            if task.status == 'paused':
+                await Task.objects.filter(pk=pk, owner=user).aupdate(
+                    status='cancelled', finished_at=timezone.now(),
+                )
+                messages.success(request, "Bekor qilindi")
+            else:
+                messages.success(request, "Bekor qilish so'raldi — worker keyingi qadamda to'xtaydi")
+        elif action == 'pause' and task.status in ('pending', 'running'):
+            await Task.objects.filter(pk=pk, owner=user).aupdate(pause_requested=True)
+            messages.success(request, "Pauza so'raldi — runner keyingi qadamda to'xtaydi")
+        elif action == 'resume' and task.status == 'paused':
+            await Task.objects.filter(pk=pk, owner=user).aupdate(
+                status='pending', pause_requested=False, started_at=None,
+            )
+            messages.success(request, "Davom ettirildi — worker qaytadan ishga tushiradi")
         elif action == 'delete' and task.status != 'running':
             await Task.objects.filter(pk=pk, owner=user).adelete()
             messages.success(request, "Task o'chirildi")

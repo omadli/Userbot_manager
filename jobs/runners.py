@@ -29,7 +29,9 @@ from accounts.models import Account
 from accounts.services import get_client_for_account, consume_quota
 from channels.models import Channel
 from groups.models import Group
-from .models import NamePool, RandomName, ScriptTemplate, Task, TaskEvent
+from django.db import IntegrityError
+
+from .models import NamePool, RandomName, ScriptTemplate, Task, TaskEvent, TaskCheckpoint
 from .services import (
     create_group_for_account,
     join_chat_for_account,
@@ -52,6 +54,7 @@ class TaskRunner:
     def __init__(self, task: Task):
         self.task = task
         self.params = dict(task.params or {})
+        self._completed_cache = None  # populated lazily by _load_completed
 
     # ---- logging -----------------------------------------------------------
 
@@ -123,25 +126,80 @@ class TaskRunner:
         ).afirst()
         return bool(val)
 
-    async def cancellable_sleep(self, seconds):
-        """Sleep that wakes early when the user clicks "Bekor qilish".
+    async def _flags(self):
+        """Return (cancel_requested, pause_requested) in one query."""
+        snap = await Task.objects.filter(pk=self.task.pk).values(
+            'cancel_requested', 'pause_requested',
+        ).afirst()
+        if not snap:
+            return False, False
+        return bool(snap['cancel_requested']), bool(snap['pause_requested'])
 
-        Returns True if cancellation was observed — caller MUST stop work
-        immediately. Polls cancel_requested every ~2s instead of blocking
-        through the full duration; previously a 90s inter-item pause kept
-        the runner unresponsive to cancellation for the whole window.
-        """
+    async def should_stop(self):
+        """True if either Bekor qilish or Pauza was requested. Loops use
+        this at iteration top to bail without doing more work."""
+        c, p = await self._flags()
+        return c or p
+
+    async def cancellable_sleep(self, seconds):
+        """Sleep that wakes early on Bekor qilish OR Pauza. Returns True
+        if either flag is set — caller MUST stop immediately. Polls every
+        ~2s so a 90s inter-item pause doesn't make the runner unresponsive
+        for the whole window."""
         if seconds <= 0:
-            return await self.is_cancelled()
+            return await self.should_stop()
         poll = 2.0
         elapsed = 0.0
         while elapsed < seconds:
             chunk = min(poll, seconds - elapsed)
             await asyncio.sleep(chunk)
             elapsed += chunk
-            if await self.is_cancelled():
+            if await self.should_stop():
                 return True
         return False
+
+    async def _load_completed(self):
+        """Read all checkpoint keys for this task. Called once per run().
+        Cached locally so per-item lookups are O(1)."""
+        if self._completed_cache is None:
+            keys = await sync_to_async(list)(
+                TaskCheckpoint.objects.filter(task=self.task)
+                .values_list('key', flat=True)
+            )
+            self._completed_cache = set(keys)
+        return self._completed_cache
+
+    async def is_completed(self, key):
+        """True if `key` was already checkpointed in a previous run."""
+        completed = await self._load_completed()
+        return key in completed
+
+    async def mark_completed(self, key):
+        """Atomic checkpoint. Safe under concurrent worker writes — the
+        unique constraint on (task, key) guarantees idempotency."""
+        completed = await self._load_completed()
+        if key in completed:
+            return
+        try:
+            await TaskCheckpoint.objects.acreate(task=self.task, key=key)
+        except IntegrityError:
+            pass  # raced; another worker beat us
+        completed.add(key)
+
+    async def finalize(self, *, success_message="Vazifa yakunlandi"):
+        """Pick the right terminal status. Cancel wins over pause. Pause
+        leaves finished_at NULL so the task remains resumable; the user's
+        Davom ettirish flips it back to 'pending' for re-claim."""
+        cancelled, paused = await self._flags()
+        if cancelled:
+            await self.update_progress(status='cancelled', finished_at=timezone.now())
+            await self.log('warning', "Vazifa bekor qilindi")
+        elif paused:
+            await self.update_progress(status='paused')
+            await self.log('warning', "Vazifa pauza qilindi — keyinroq davom ettirish mumkin")
+        else:
+            await self.update_progress(status='completed', finished_at=timezone.now())
+            await self.log('success', success_message)
 
     async def quota_ok(self, account):
         """
@@ -277,9 +335,7 @@ class CreateGroupsRunner(TaskRunner):
 
         async def process_account(account, titles, name_pks):
             async with sem:
-                if await self.is_cancelled():
-                    await self.log('warning', "Bekor qilingan — boshlanmadi",
-                                   account=account, step='cancelled')
+                if await self.should_stop():
                     return
 
                 await self.log('info', "Boshlandi", account=account, step='start')
@@ -304,12 +360,14 @@ class CreateGroupsRunner(TaskRunner):
                     return
 
                 for idx, (title, name_pk) in enumerate(zip(titles, name_pks), start=1):
-                    if await self.is_cancelled():
-                        await self.log('warning', f"Bekor qilindi ({idx-1}/{len(titles)} bajarildi)",
-                                       account=account, step='cancelled')
+                    if await self.should_stop():
                         return
 
-                    await self._create_one(account, title, name_pk, idx, len(titles), megagroup, send_welcome)
+                    ckey = f"{account.pk}-{idx}"
+                    if await self.is_completed(ckey):
+                        continue  # already created in a previous run
+
+                    await self._create_one(account, title, name_pk, idx, len(titles), megagroup, send_welcome, ckey=ckey)
 
                     if idx < len(titles):
                         delay = random.uniform(delay_min, delay_max)
@@ -329,14 +387,9 @@ class CreateGroupsRunner(TaskRunner):
         )
 
         # --- Finalize ---
-        if await self.is_cancelled():
-            await self.update_progress(status='cancelled', finished_at=timezone.now())
-            await self.log('warning', "Vazifa bekor qilindi")
-        else:
-            await self.update_progress(status='completed', finished_at=timezone.now())
-            await self.log('success', "Vazifa yakunlandi")
+        await self.finalize()
 
-    async def _create_one(self, account, title, name_pk, idx, total, megagroup, send_welcome=True):
+    async def _create_one(self, account, title, name_pk, idx, total, megagroup, send_welcome=True, ckey=None):
         """Create one group, with FloodWait retry. Writes events + increments counters."""
         if not await self.quota_ok(account):
             await self.incr_done(success=False)
@@ -398,6 +451,8 @@ class CreateGroupsRunner(TaskRunner):
                 elif send_welcome:
                     msg += " · welcome yuborilmadi"
                 await self.log('success', msg, account=account, step='created')
+                if ckey:
+                    await self.mark_completed(ckey)
                 await self.incr_done(success=True)
                 return
 
@@ -508,7 +563,7 @@ class JoinChannelRunner(TaskRunner):
 
         async def process_account(account):
             async with sem:
-                if await self.is_cancelled():
+                if await self.should_stop():
                     return
 
                 await self.log('info', "Boshlandi", account=account, step='start')
@@ -533,16 +588,17 @@ class JoinChannelRunner(TaskRunner):
 
                 joined = 0
                 for idx, target in enumerate(targets, start=1):
-                    if await self.is_cancelled():
+                    if await self.should_stop():
                         return
 
+                    ckey = f"{account.pk}-{idx}"
+                    if await self.is_completed(ckey):
+                        continue
+
                     try:
-                        await self._join_one(account, target, idx, len(targets))
-                        joined += 1  # attempted; success flag handled inside
+                        await self._join_one(account, target, idx, len(targets), ckey=ckey)
+                        joined += 1
                     except _AccountStopped:
-                        remaining = len(targets) - idx
-                        for _ in range(remaining):
-                            await self.incr_done(success=False)
                         return
 
                     if idx < len(targets):
@@ -562,14 +618,9 @@ class JoinChannelRunner(TaskRunner):
             return_exceptions=True,
         )
 
-        if await self.is_cancelled():
-            await self.update_progress(status='cancelled', finished_at=timezone.now())
-            await self.log('warning', "Vazifa bekor qilindi")
-        else:
-            await self.update_progress(status='completed', finished_at=timezone.now())
-            await self.log('success', "Vazifa yakunlandi")
+        await self.finalize()
 
-    async def _join_one(self, account, target, idx, total):
+    async def _join_one(self, account, target, idx, total, ckey=None):
         if not await self.quota_ok(account):
             await self.incr_done(success=False)
             raise _AccountStopped()
@@ -615,6 +666,8 @@ class JoinChannelRunner(TaskRunner):
                     msg = f"✓ Qo'shildi: {title}"
                     step = 'joined'
                 await self.log('success', msg, account=account, step=step)
+                if ckey:
+                    await self.mark_completed(ckey)
                 await self.incr_done(success=True)
                 return
 
@@ -715,8 +768,12 @@ class LeaveChatsRunner(TaskRunner):
 
         async def process_account(account):
             async with sem:
-                if await self.is_cancelled():
+                if await self.should_stop():
                     return
+
+                ckey = f"{account.pk}"
+                if await self.is_completed(ckey):
+                    return  # already left chats for this account in a previous run
 
                 await self.log('info', "Boshlandi", account=account, step='start')
 
@@ -742,7 +799,6 @@ class LeaveChatsRunner(TaskRunner):
                     return
 
                 try:
-                    # Pick mode: explicit list of chat_ids vs admin-filter sweep
                     explicit = chat_ids_per_account.get(str(account.pk)) \
                         or chat_ids_per_account.get(account.pk) \
                         or chat_ids_flat
@@ -794,6 +850,8 @@ class LeaveChatsRunner(TaskRunner):
                     f"{errors} ta xato",
                     account=account, step='finished',
                 )
+                if errors == 0:
+                    await self.mark_completed(ckey)
                 await self.incr_done(success=(errors == 0))
 
         await asyncio.gather(
@@ -801,12 +859,7 @@ class LeaveChatsRunner(TaskRunner):
             return_exceptions=True,
         )
 
-        if await self.is_cancelled():
-            await self.update_progress(status='cancelled', finished_at=timezone.now())
-            await self.log('warning', "Vazifa bekor qilindi")
-        else:
-            await self.update_progress(status='completed', finished_at=timezone.now())
-            await self.log('success', "Vazifa yakunlandi")
+        await self.finalize()
 
 
 class BoostViewsRunner(TaskRunner):
@@ -874,7 +927,7 @@ class BoostViewsRunner(TaskRunner):
 
         async def process_account(account):
             async with sem:
-                if await self.is_cancelled():
+                if await self.should_stop():
                     return
 
                 if min_age_minutes > 0:
@@ -896,7 +949,7 @@ class BoostViewsRunner(TaskRunner):
                     return
 
                 for r in range(1, rounds + 1):
-                    if await self.is_cancelled():
+                    if await self.should_stop():
                         return
                     try:
                         stop = await self._boost_one(account, urls, r, rounds)
@@ -920,12 +973,7 @@ class BoostViewsRunner(TaskRunner):
             return_exceptions=True,
         )
 
-        if await self.is_cancelled():
-            await self.update_progress(status='cancelled', finished_at=timezone.now())
-            await self.log('warning', "Vazifa bekor qilindi")
-        else:
-            await self.update_progress(status='completed', finished_at=timezone.now())
-            await self.log('success', "Vazifa yakunlandi")
+        await self.finalize()
 
     async def _boost_one(self, account, urls, round_idx, total_rounds):
         if not await self.quota_ok(account):
@@ -1047,7 +1095,7 @@ class ReactToPostRunner(TaskRunner):
 
         async def process_account(account):
             async with sem:
-                if await self.is_cancelled():
+                if await self.should_stop():
                     return
 
                 if min_age_minutes > 0:
@@ -1067,7 +1115,7 @@ class ReactToPostRunner(TaskRunner):
                     return
 
                 for idx, url in enumerate(urls, start=1):
-                    if await self.is_cancelled():
+                    if await self.should_stop():
                         return
                     # Per-action probability roll — some accounts skip
                     # individual messages to look less uniform.
@@ -1094,12 +1142,7 @@ class ReactToPostRunner(TaskRunner):
 
         await asyncio.gather(*[process_account(a) for a in accounts], return_exceptions=True)
 
-        if await self.is_cancelled():
-            await self.update_progress(status='cancelled', finished_at=timezone.now())
-            await self.log('warning', "Vazifa bekor qilindi")
-        else:
-            await self.update_progress(status='completed', finished_at=timezone.now())
-            await self.log('success', "Vazifa yakunlandi")
+        await self.finalize()
 
     async def _react_one(self, account, url, emojis, idx, total):
         if not await self.quota_ok(account):
@@ -1198,9 +1241,13 @@ class _SimplePerAccountRunner(TaskRunner):
 
         async def worker(account, order):
             async with sem:
-                if await self.is_cancelled():
+                if await self.should_stop():
                     return
-                # Stagger the start slightly so all workers don't fire at t=0
+
+                ckey = f"{account.pk}"
+                if await self.is_completed(ckey):
+                    return  # already done in a previous run
+
                 if order > 0:
                     if await self.cancellable_sleep(random.uniform(delay_min, delay_max)):
                         return
@@ -1247,6 +1294,7 @@ class _SimplePerAccountRunner(TaskRunner):
 
                     if result['success']:
                         await self._log_success(account, result)
+                        await self.mark_completed(ckey)
                         await self.incr_done(success=True)
                     else:
                         await self.log('error',
@@ -1261,12 +1309,7 @@ class _SimplePerAccountRunner(TaskRunner):
             return_exceptions=True,
         )
 
-        if await self.is_cancelled():
-            await self.update_progress(status='cancelled', finished_at=timezone.now())
-            await self.log('warning', "Vazifa bekor qilindi")
-        else:
-            await self.update_progress(status='completed', finished_at=timezone.now())
-            await self.log('success', "Vazifa yakunlandi")
+        await self.finalize()
 
     async def _log_success(self, account, result):
         """Subclasses override to emit a more specific success line."""
@@ -1433,7 +1476,7 @@ class RunScriptRunner(TaskRunner):
 
         async def worker(account, order):
             async with sem:
-                if await self.is_cancelled():
+                if await self.should_stop():
                     return
                 if order > 0:
                     if await self.cancellable_sleep(random.uniform(delay_min, delay_max)):
@@ -1496,12 +1539,7 @@ class RunScriptRunner(TaskRunner):
             return_exceptions=True,
         )
 
-        if await self.is_cancelled():
-            await self.update_progress(status='cancelled', finished_at=timezone.now())
-            await self.log('warning', "Vazifa bekor qilindi")
-        else:
-            await self.update_progress(status='completed', finished_at=timezone.now())
-            await self.log('success', "Vazifa yakunlandi")
+        await self.finalize()
 
 
 class AccountWarmingRunner(TaskRunner):
@@ -1564,7 +1602,7 @@ class AccountWarmingRunner(TaskRunner):
 
         async def warm_one(account):
             async with sem:
-                if await self.is_cancelled():
+                if await self.should_stop():
                     return
 
                 if not account.session_string:
@@ -1614,7 +1652,7 @@ class AccountWarmingRunner(TaskRunner):
                     end_time = timezone.now() + timedelta(minutes=duration_min)
 
                     while timezone.now() < end_time:
-                        if await self.is_cancelled():
+                        if await self.should_stop():
                             break
 
                         if dialogs:
@@ -1677,12 +1715,7 @@ class AccountWarmingRunner(TaskRunner):
 
         await asyncio.gather(*[warm_one(a) for a in accounts], return_exceptions=True)
 
-        if await self.is_cancelled():
-            await self.update_progress(status='cancelled', finished_at=timezone.now())
-            await self.log('warning', "Vazifa bekor qilindi")
-        else:
-            await self.update_progress(status='completed', finished_at=timezone.now())
-            await self.log('success', "Warming vazifasi yakunlandi")
+        await self.finalize(success_message="Warming vazifasi yakunlandi")
 
 
 # Re-export fatal-exception tuples for AccountWarmingRunner (single-source-of-truth
@@ -1763,7 +1796,7 @@ class SendMessageRunner(TaskRunner):
 
         async def process_account(account):
             async with sem:
-                if await self.is_cancelled():
+                if await self.should_stop():
                     return
                 if min_age_minutes > 0:
                     age_min = (timezone.now() - account.created_at).total_seconds() / 60
@@ -1781,7 +1814,7 @@ class SendMessageRunner(TaskRunner):
                     return
 
                 for idx, target in enumerate(targets, start=1):
-                    if await self.is_cancelled():
+                    if await self.should_stop():
                         return
                     if not await self.quota_ok(account):
                         await self.incr_done(success=False)
@@ -1829,12 +1862,7 @@ class SendMessageRunner(TaskRunner):
 
         await asyncio.gather(*[process_account(a) for a in accounts], return_exceptions=True)
 
-        if await self.is_cancelled():
-            await self.update_progress(status='cancelled', finished_at=timezone.now())
-            await self.log('warning', "Vazifa bekor qilindi")
-        else:
-            await self.update_progress(status='completed', finished_at=timezone.now())
-            await self.log('success', "Vazifa yakunlandi")
+        await self.finalize()
 
 
 class UpdateProfileRunner(TaskRunner):
@@ -1906,7 +1934,7 @@ class UpdateProfileRunner(TaskRunner):
 
         async def process_account(account):
             async with sem:
-                if await self.is_cancelled():
+                if await self.should_stop():
                     return
                 if not account.session_string:
                     await self.log('error', "Sessiya yo'q", account=account, step='no_session')
@@ -1962,12 +1990,7 @@ class UpdateProfileRunner(TaskRunner):
 
         await asyncio.gather(*[process_account(a) for a in accounts], return_exceptions=True)
 
-        if await self.is_cancelled():
-            await self.update_progress(status='cancelled', finished_at=timezone.now())
-            await self.log('warning', "Vazifa bekor qilindi")
-        else:
-            await self.update_progress(status='completed', finished_at=timezone.now())
-            await self.log('success', "Vazifa yakunlandi")
+        await self.finalize()
 
 
 class ViewStoriesRunner(TaskRunner):
@@ -2009,7 +2032,7 @@ class ViewStoriesRunner(TaskRunner):
 
         async def process_account(account):
             async with sem:
-                if await self.is_cancelled():
+                if await self.should_stop():
                     return
                 if not account.session_string:
                     await self.log('error', "Sessiya yo'q",
@@ -2042,12 +2065,7 @@ class ViewStoriesRunner(TaskRunner):
 
         await asyncio.gather(*[process_account(a) for a in accounts], return_exceptions=True)
 
-        if await self.is_cancelled():
-            await self.update_progress(status='cancelled', finished_at=timezone.now())
-            await self.log('warning', "Vazifa bekor qilindi")
-        else:
-            await self.update_progress(status='completed', finished_at=timezone.now())
-            await self.log('success', "Vazifa yakunlandi")
+        await self.finalize()
 
 
 class MarkAllReadRunner(TaskRunner):
@@ -2083,7 +2101,7 @@ class MarkAllReadRunner(TaskRunner):
 
         async def process_account(account):
             async with sem:
-                if await self.is_cancelled():
+                if await self.should_stop():
                     return
                 if not account.session_string:
                     await self.log('error', "Sessiya yo'q",
@@ -2112,12 +2130,7 @@ class MarkAllReadRunner(TaskRunner):
 
         await asyncio.gather(*[process_account(a) for a in accounts], return_exceptions=True)
 
-        if await self.is_cancelled():
-            await self.update_progress(status='cancelled', finished_at=timezone.now())
-            await self.log('warning', "Vazifa bekor qilindi")
-        else:
-            await self.update_progress(status='completed', finished_at=timezone.now())
-            await self.log('success', "Vazifa yakunlandi")
+        await self.finalize()
 
 
 class Set2FAPasswordRunner(TaskRunner):
@@ -2174,7 +2187,7 @@ class Set2FAPasswordRunner(TaskRunner):
 
         async def process_account(account):
             async with sem:
-                if await self.is_cancelled():
+                if await self.should_stop():
                     return
                 if not account.session_string:
                     await self.log('error', "Sessiya yo'q",
@@ -2205,12 +2218,7 @@ class Set2FAPasswordRunner(TaskRunner):
 
         await asyncio.gather(*[process_account(a) for a in accounts], return_exceptions=True)
 
-        if await self.is_cancelled():
-            await self.update_progress(status='cancelled', finished_at=timezone.now())
-            await self.log('warning', "Vazifa bekor qilindi")
-        else:
-            await self.update_progress(status='completed', finished_at=timezone.now())
-            await self.log('success', "Vazifa yakunlandi")
+        await self.finalize()
 
 
 RUNNERS = {
