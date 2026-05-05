@@ -66,10 +66,9 @@ case "$ROLE" in
 
     worker)
         wait_for_postgres
-        # `--reset-stuck` flips any tasks left in `running` from a previous
-        # crashed worker back to `failed`, so they don't block the queue.
-        echo "[entrypoint] starting background worker"
-        exec python manage.py run_worker --reset-stuck
+        echo "[entrypoint] starting background worker (concurrency=${WORKER_CONCURRENCY:-5})"
+        exec python manage.py run_worker --reset-stuck \
+            --max-concurrency "${WORKER_CONCURRENCY:-5}"
         ;;
 
     migrate)
