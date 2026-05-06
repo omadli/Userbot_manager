@@ -1,4 +1,3 @@
-{# Reusable schedule inputs — include inside a <form method="post"> in any task_create_*.html #}
 <div class="card shadow-sm mb-3">
     <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center"
          role="button" data-bs-toggle="collapse" data-bs-target="#scheduleBlock">
@@ -13,17 +12,132 @@
                        class="form-control rounded-pill bg-light border-0">
                 <small class="text-muted">Bo'sh qoldirilsa darhol ishga tushadi.</small>
             </div>
-            <div>
-                <label class="form-label fw-bold small text-uppercase text-muted">Takroriy cron</label>
-                <input type="text" name="recurring_cron"
+
+            <div class="mb-3">
+                <label class="form-label fw-bold small text-uppercase text-muted">Takroriylik</label>
+                <select id="cronPreset" class="form-select rounded-pill bg-light border-0">
+                    <option value="">Bir martalik</option>
+                    <option value="*/15 * * * *">Har 15 daqiqada</option>
+                    <option value="*/30 * * * *">Har 30 daqiqada</option>
+                    <option value="0 * * * *">Har soatda (00:00)</option>
+                    <option value="0 */2 * * *">Har 2 soatda</option>
+                    <option value="0 */6 * * *">Har 6 soatda</option>
+                    <option value="0 9 * * *">Har kun 09:00</option>
+                    <option value="0 9 * * 1">Har dushanba 09:00</option>
+                    <option value="custom">— Maxsus cron yozish —</option>
+                </select>
+            </div>
+
+            <div id="cronCustomBox" class="mb-2 d-none">
+                <label class="form-label fw-bold small text-uppercase text-muted">Cron ifodasi</label>
+                <input type="text" id="cronInput" name="recurring_cron"
                        class="form-control rounded-pill bg-light border-0 font-monospace"
                        placeholder="*/30 * * * *">
                 <small class="text-muted">
-                    5-maydonli crontab: <code>daqiqa soat kun oy hafta</code>.
-                    Misol: <code>0 */2 * * *</code> — har 2 soatda; <code>*/15 * * * *</code> — har 15 daqiqada.
-                    Bo'sh — bir martalik.
+                    5 maydon: <code>daqiqa soat kun oy hafta</code>.
                 </small>
+            </div>
+            <input type="hidden" id="cronHidden" name="recurring_cron" value="">
+
+            <div id="cronPreview" class="alert alert-light border small mb-0 d-none">
+                <strong>Keyingi ishga tushishlar:</strong>
+                <ul id="cronPreviewList" class="mb-0 mt-1 ps-3"></ul>
             </div>
         </div>
     </div>
 </div>
+
+<script>
+(function(){
+    const preset = document.getElementById('cronPreset');
+    const custom = document.getElementById('cronCustomBox');
+    const input = document.getElementById('cronInput');
+    const hidden = document.getElementById('cronHidden');
+    const preview = document.getElementById('cronPreview');
+    const previewList = document.getElementById('cronPreviewList');
+    if (!preset) return;
+
+    function setExpr(expr) {
+        if (input) input.value = expr;
+        if (hidden) hidden.value = expr;
+        renderPreview(expr);
+    }
+
+    function renderPreview(expr) {
+        if (!expr) { preview.classList.add('d-none'); return; }
+        try {
+            const fires = nextCronFires(expr, 5);
+            previewList.innerHTML = fires.map(d => `<li>${d.toLocaleString()}</li>`).join('');
+            preview.classList.remove('d-none');
+        } catch (e) {
+            preview.classList.add('d-none');
+        }
+    }
+
+    preset.addEventListener('change', () => {
+        const v = preset.value;
+        if (v === 'custom') {
+            custom.classList.remove('d-none');
+            setExpr(input.value || '');
+            input.focus();
+        } else {
+            custom.classList.add('d-none');
+            setExpr(v);
+        }
+    });
+    if (input) input.addEventListener('input', () => setExpr(input.value));
+
+    // Minimal client-side cron resolver (subset, good enough for a 5-row preview).
+    // Supports: '*', 'N', '*/N', 'A,B', 'A-B'. No nicknames / day-of-week names.
+    function parseField(spec, min, max) {
+        const out = new Set();
+        for (const part of spec.split(',')) {
+            const stepM = part.match(/^(\*|\d+|\d+-\d+)\/(\d+)$/);
+            if (stepM) {
+                const step = parseInt(stepM[2], 10);
+                let lo = min, hi = max;
+                if (stepM[1] !== '*') {
+                    if (stepM[1].includes('-')) [lo, hi] = stepM[1].split('-').map(Number);
+                    else lo = parseInt(stepM[1], 10);
+                }
+                for (let v = lo; v <= hi; v += step) out.add(v);
+                continue;
+            }
+            if (part === '*') { for (let v = min; v <= max; v++) out.add(v); continue; }
+            const rangeM = part.match(/^(\d+)-(\d+)$/);
+            if (rangeM) {
+                for (let v = +rangeM[1]; v <= +rangeM[2]; v++) out.add(v);
+                continue;
+            }
+            const n = parseInt(part, 10);
+            if (!isNaN(n)) out.add(n);
+        }
+        return out;
+    }
+
+    function nextCronFires(expr, count) {
+        const parts = expr.trim().split(/\s+/);
+        if (parts.length !== 5) throw new Error('not 5 fields');
+        const mins  = parseField(parts[0], 0, 59);
+        const hours = parseField(parts[1], 0, 23);
+        const doms  = parseField(parts[2], 1, 31);
+        const mons  = parseField(parts[3], 1, 12);
+        const dows  = parseField(parts[4], 0, 6);
+
+        const out = [];
+        let d = new Date();
+        d.setSeconds(0, 0);
+        d.setMinutes(d.getMinutes() + 1);
+
+        for (let i = 0; i < 60 * 24 * 366 && out.length < count; i++) {
+            if (mins.has(d.getMinutes()) && hours.has(d.getHours())
+                && doms.has(d.getDate()) && mons.has(d.getMonth() + 1)
+                && dows.has(d.getDay())) {
+                out.push(new Date(d));
+            }
+            d.setMinutes(d.getMinutes() + 1);
+        }
+        return out;
+    }
+})();
+</script>

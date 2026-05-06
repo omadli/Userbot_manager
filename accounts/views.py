@@ -661,7 +661,39 @@ def _load_account_detail(pk, user):
     channels         = list(account.channels.all().order_by('-created_at'))
     all_tags         = list(Tag.objects.filter(owner=user).order_by('name'))
     account_tag_ids  = list(account.tags.values_list('id', flat=True))
-    return account, device_settings, proxies, groups, channels, all_tags, account_tag_ids
+    activity = _account_activity_buckets(account)
+    return account, device_settings, proxies, groups, channels, all_tags, account_tag_ids, activity
+
+
+def _account_activity_buckets(account):
+    """7 daily buckets of TaskEvent counts (success/error/warning) for the
+    detail page sparkline chart."""
+    from datetime import timedelta
+    from collections import OrderedDict
+
+    from jobs.models import TaskEvent
+    from django.db.models import Count
+
+    now = timezone.now()
+    cutoff = now - timedelta(days=7)
+    rows = (
+        TaskEvent.objects.filter(account=account, created_at__gte=cutoff)
+        .extra(select={'day': "date(created_at)"})
+        .values('day', 'level')
+        .annotate(c=Count('id'))
+    )
+    buckets = OrderedDict()
+    for i in range(6, -1, -1):
+        d = (now - timedelta(days=i)).date().isoformat()
+        buckets[d] = {'success': 0, 'error': 0, 'warning': 0, 'info': 0}
+    for r in rows:
+        d = str(r['day'])
+        if d in buckets:
+            buckets[d][r['level']] = r['c']
+    return [
+        {'day': d, **counts}
+        for d, counts in buckets.items()
+    ]
 
 
 @sync_to_async
@@ -707,7 +739,7 @@ async def account_detail(request, pk):
     if user is None:
         return redirect(f"{settings.LOGIN_URL}?next={request.path}")
 
-    account, device_settings, proxies, groups, channels, all_tags, account_tag_ids = await _load_account_detail(pk, user)
+    account, device_settings, proxies, groups, channels, all_tags, account_tag_ids, activity = await _load_account_detail(pk, user)
 
     if request.method == "POST":
         action = request.POST.get('action')
@@ -781,7 +813,7 @@ async def account_detail(request, pk):
             return redirect('accounts:account_detail', pk=pk)
 
     # Refresh avatar
-    account, device_settings, proxies, groups, channels, all_tags, account_tag_ids = await _load_account_detail(pk, user)
+    account, device_settings, proxies, groups, channels, all_tags, account_tag_ids, activity = await _load_account_detail(pk, user)
     if account.session_string:
         try:
             media_avatars = os.path.join(settings.MEDIA_ROOT, 'avatars')
@@ -805,6 +837,7 @@ async def account_detail(request, pk):
         'channels': channels,
         'all_tags': all_tags,
         'account_tag_ids': account_tag_ids,
+        'activity': activity,
     })
 
 
@@ -1309,3 +1342,211 @@ async def proxy_detail(request, pk):
         return redirect('accounts:proxy_detail', pk=pk)
 
     return await render_async(request, 'accounts/proxy_detail.html', {'proxy': proxy})
+
+
+# ---------------------------------------------------------------------------
+# Account import wizard — bulk add via CSV / pasted session strings.
+# ---------------------------------------------------------------------------
+
+@sync_to_async
+def _list_proxies_devices_tags(user):
+    proxies = list(Proxy.objects.filter(owner=user).order_by('name'))
+    devices = list(DeviceSetting.objects.all().order_by('device_model'))
+    from .models import Tag
+    tags = list(Tag.objects.filter(owner=user).order_by('name'))
+    return proxies, devices, tags
+
+
+def _parse_csv_rows(text):
+    """Lenient CSV parser: comma OR pipe separated, header optional."""
+    import io
+    text = (text or '').strip()
+    if not text:
+        return []
+    sample = text[:1024]
+    delim = '|' if sample.count('|') > sample.count(',') else ','
+
+    rows = []
+    has_header = False
+    reader = csv.reader(io.StringIO(text), delimiter=delim)
+    for line in reader:
+        line = [c.strip() for c in line]
+        if not any(line):
+            continue
+        if not rows and any(h.lower() in ('phone', 'phone_number', 'session_string', 'session') for h in line):
+            has_header = True
+            header = [h.lower() for h in line]
+            continue
+        if has_header:
+            rows.append(dict(zip(header, line)))
+        else:
+            keys = ('phone_number', 'session_string', 'api_id', 'api_hash',
+                    'first_name', 'last_name', 'two_fa_password')
+            rows.append(dict(zip(keys, line)))
+    return rows
+
+
+async def import_accounts(request):
+    user = await _require_login(request)
+    if user is None:
+        return redirect(f"{settings.LOGIN_URL}?next={request.path}")
+
+    proxies, devices, tags = await _list_proxies_devices_tags(user)
+
+    if request.method != 'POST':
+        return await render_async(request, 'accounts/import_accounts.html', {
+            'proxies': proxies, 'devices': devices, 'tags': tags,
+        })
+
+    csv_text = request.POST.get('csv_text', '')
+    if request.FILES.get('csv_file'):
+        csv_text = request.FILES['csv_file'].read().decode('utf-8', errors='replace')
+
+    default_proxy_id = request.POST.get('default_proxy') or None
+    default_device_id = request.POST.get('default_device') or None
+    default_tag_ids = request.POST.getlist('default_tags')
+    skip_validation = bool(request.POST.get('skip_validation'))
+
+    rows = _parse_csv_rows(csv_text)
+    if not rows:
+        messages.error(request, "Bo'sh yoki noto'g'ri CSV")
+        return redirect('accounts:import_accounts')
+
+    default_device = None
+    if default_device_id and default_device_id.isdigit():
+        default_device = await DeviceSetting.objects.filter(pk=int(default_device_id)).afirst()
+    default_proxy = None
+    if default_proxy_id and default_proxy_id.isdigit():
+        default_proxy = await Proxy.objects.filter(pk=int(default_proxy_id), owner=user).afirst()
+
+    from .services import validate_session_string
+
+    created, skipped, errors = [], [], []
+    for i, row in enumerate(rows, start=1):
+        phone = (row.get('phone_number') or row.get('phone') or '').strip()
+        session = (row.get('session_string') or row.get('session') or '').strip()
+        if not phone or not session:
+            errors.append(f"Qator {i}: phone yoki session_string bo'sh")
+            continue
+
+        existing = await Account.objects.filter(phone_number=phone, owner=user).afirst()
+        if existing is not None:
+            skipped.append(f"{phone} — allaqachon mavjud")
+            continue
+
+        api_id = row.get('api_id') or None
+        api_hash = (row.get('api_hash') or '').strip() or None
+        try:
+            api_id = int(api_id) if api_id else None
+        except ValueError:
+            api_id = None
+
+        if not skip_validation:
+            res = await validate_session_string(
+                session, device_setting=default_device,
+                api_id=api_id, api_hash=api_hash, proxy=default_proxy,
+            )
+            if not res['ok']:
+                errors.append(f"{phone}: {res['error']}")
+                continue
+            first_name = row.get('first_name') or res.get('first_name') or ''
+            last_name = row.get('last_name') or res.get('last_name') or ''
+            username = row.get('username') or res.get('username') or ''
+            user_id = res.get('user_id')
+        else:
+            first_name = row.get('first_name') or ''
+            last_name = row.get('last_name') or ''
+            username = row.get('username') or ''
+            user_id = None
+
+        acc = await Account.objects.acreate(
+            owner=user,
+            phone_number=phone,
+            first_name=first_name,
+            last_name=last_name,
+            username=username,
+            user_id=user_id,
+            api_id=api_id,
+            api_hash=api_hash,
+            session_string=session,
+            two_fa_password=row.get('two_fa_password') or '',
+            email=row.get('email') or '',
+            device_setting=default_device,
+            proxy=default_proxy,
+            is_active=True,
+        )
+        if default_tag_ids:
+            await sync_to_async(acc.tags.add)(*[int(t) for t in default_tag_ids if t.isdigit()])
+        created.append(phone)
+
+    if created:
+        messages.success(request, f"{len(created)} ta akkaunt qo'shildi")
+    if skipped:
+        messages.warning(request, f"{len(skipped)} ta o'tkazildi (mavjud)")
+    if errors:
+        messages.error(request, "Xatolar:\n" + "\n".join(errors[:10]) + ("\n…" if len(errors) > 10 else ""))
+
+    return redirect('accounts:dashboard')
+
+
+async def global_search_json(request):
+    """Tezkor qidiruv (Ctrl+K palette) — akkaunt, tag, task'lar."""
+    user = await _require_login(request)
+    if user is None:
+        return JsonResponse({'error': 'auth'}, status=401)
+
+    q = (request.GET.get('q') or '').strip()
+    if len(q) < 2:
+        return JsonResponse({'results': []})
+
+    @sync_to_async
+    def _search():
+        results = []
+        accounts = list(
+            Account.objects.filter(owner=user).filter(
+                Q(phone_number__icontains=q) |
+                Q(first_name__icontains=q) |
+                Q(last_name__icontains=q) |
+                Q(username__icontains=q)
+            ).order_by('-is_active', 'phone_number')[:6]
+        )
+        for a in accounts:
+            label = a.first_name or a.phone_number
+            if a.username:
+                label += f" (@{a.username})"
+            results.append({
+                'label': label,
+                'icon': 'bi-person-circle',
+                'href': f"/accounts/detail/{a.pk}/",
+                'hint': a.phone_number,
+            })
+
+        from .models import Tag
+        tags = list(
+            Tag.objects.filter(owner=user, name__icontains=q).order_by('name')[:4]
+        )
+        for t in tags:
+            results.append({
+                'label': t.name,
+                'icon': 'bi-tag-fill',
+                'href': f"/accounts/?tags={t.pk}",
+                'hint': "tag",
+            })
+
+        from jobs.models import Task
+        if q.isdigit():
+            tasks = list(Task.objects.filter(owner=user, pk=int(q))[:3])
+        else:
+            tasks = list(Task.objects.filter(owner=user, kind__icontains=q).order_by('-created_at')[:4])
+        for t in tasks:
+            results.append({
+                'label': f"#{t.pk} — {t.get_kind_display()}",
+                'icon': 'bi-activity',
+                'href': f"/jobs/{t.pk}/",
+                'hint': t.get_status_display(),
+            })
+
+        return results
+
+    results = await _search()
+    return JsonResponse({'results': results})

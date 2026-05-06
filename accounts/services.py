@@ -123,6 +123,39 @@ async def get_client(temp_session_string=None, device_setting=None, api_id=None,
     return client
 
 
+async def validate_session_string(session_str, *, device_setting=None, api_id=None,
+                                    api_hash=None, proxy=None):
+    """Connect once, call get_me(), report identity. Used by the import wizard."""
+    if not session_str:
+        return {'ok': False, 'error': "Sessiya bo'sh"}
+    client = None
+    try:
+        client = await get_client(
+            temp_session_string=session_str,
+            device_setting=device_setting,
+            api_id=api_id, api_hash=api_hash, proxy=proxy,
+        )
+        me = await client.get_me()
+        if not me:
+            return {'ok': False, 'error': "Sessiya yaroqsiz (get_me=None)"}
+        return {
+            'ok': True,
+            'user_id': me.id,
+            'first_name': getattr(me, 'first_name', '') or '',
+            'last_name': getattr(me, 'last_name', '') or '',
+            'username': getattr(me, 'username', '') or '',
+            'phone': getattr(me, 'phone', '') or '',
+        }
+    except Exception as e:
+        return {'ok': False, 'error': str(e)[:200]}
+    finally:
+        if client is not None:
+            try:
+                await client.disconnect()
+            except Exception:
+                pass
+
+
 async def send_code(phone_number, device_setting=None, api_id=None, api_hash=None, proxy=None):
     client = await get_client(
         device_setting=device_setting,

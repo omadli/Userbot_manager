@@ -42,8 +42,9 @@
                             {{ t.get_kind_display }}
                         </a>
                         {% if t.recurring_cron %}
-                        <span class="badge bg-info bg-opacity-10 text-info border border-info rounded-pill ms-2" title="Cron: {{ t.recurring_cron }}">
-                            <i class="bi bi-arrow-repeat"></i>
+                        <span class="badge bg-info bg-opacity-10 text-info border border-info rounded-pill ms-2"
+                              title="Cron: {{ t.recurring_cron }}">
+                            <i class="bi bi-arrow-repeat"></i> <span class="font-monospace">{{ t.recurring_cron }}</span>
                         </span>
                         {% endif %}
                     </td>

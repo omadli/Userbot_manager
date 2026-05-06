@@ -26,7 +26,10 @@
         <h2 class="fw-bold mb-1 text-dark">Akkauntlar</h2>
         <p class="text-muted mb-0">Tizimga ulangan barcha telegram raqamlarni boshqarish</p>
     </div>
-    <div class="col-sm-4 text-sm-end mt-3 mt-sm-0">
+    <div class="col-sm-4 text-sm-end mt-3 mt-sm-0 d-flex flex-wrap gap-2 justify-content-sm-end">
+        <a href="{% url 'accounts:import_accounts' %}" class="btn btn-light border rounded-pill px-3 shadow-sm py-2">
+            <i class="bi bi-upload me-1"></i> Import
+        </a>
         <a href="{% url 'accounts:add_account' %}" class="btn btn-gradient rounded-pill px-4 shadow-sm py-2">
             <i class="bi bi-plus-lg me-1"></i> Yangi akkaunt
         </a>
@@ -62,7 +65,7 @@
         </form>
     </div>
     <div class="col-6 col-md-4 col-lg-2">
-        <form method="post" action="{% url 'accounts:dashboard' %}?is_active=True&is_spam=False" class="m-0 h-100">
+        <form method="post" action="{% url 'accounts:dashboard' %}?is_active=True&is_spam=False&health_lt=50" class="m-0 h-100">
             {% csrf_token %}
             <input type="hidden" name="bulk_action" value="account_warming">
             <input type="hidden" name="select_all_filter" value="1">
@@ -71,7 +74,7 @@
                     <span class="quick-icon bg-warning bg-opacity-10 text-warning"><i class="bi bi-fire"></i></span>
                     <div class="quick-text">
                         <div class="fw-bold small">Warming</div>
-                        <div class="text-muted small-sub">Akkauntlarni isitish</div>
+                        <div class="text-muted small-sub">Sog'lik &lt; 50</div>
                     </div>
                 </div>
             </button>
@@ -241,6 +244,7 @@
                                 <th class="py-3 text-muted fw-bold col-groups d-none" style="font-size: 0.85rem;">GURUH</th>
                                 <th class="py-3 text-muted fw-bold col-channels d-none" style="font-size: 0.85rem;">KANAL</th>
                                 <th class="py-3 text-muted fw-bold" style="font-size: 0.85rem;">TEGLAR</th>
+                                <th class="py-3 text-muted fw-bold" style="font-size: 0.85rem;">SOG'LIK</th>
                                 <th class="py-3 text-muted fw-bold" style="font-size: 0.85rem;">HOLATI</th>
                                 <th class="pe-4 py-3 text-end text-muted fw-bold" style="font-size: 0.85rem;">AMALLAR</th>
                             </tr>
@@ -298,6 +302,16 @@
                                     </div>
                                 </td>
                                 <td>
+                                    {% with band=account.health_band %}
+                                    <div class="d-flex align-items-center gap-2" title="{{ account.health_score }}/100">
+                                        <div class="health-dot health-{{ band }}"></div>
+                                        <span class="small fw-bold {% if band == 'green' %}text-success{% elif band == 'yellow' %}text-warning{% else %}text-danger{% endif %}">
+                                            {{ account.health_score }}
+                                        </span>
+                                    </div>
+                                    {% endwith %}
+                                </td>
+                                <td>
                                     <div class="d-flex flex-column gap-1" style="width: 80px;">
                                         {% if account.is_active %}
                                         <span class="badge bg-success bg-opacity-10 text-success border border-success px-1 py-1 w-100 text-center">Aktiv</span>
@@ -331,7 +345,7 @@
                             </tr>
                             {% empty %}
                             <tr>
-                                <td colspan="11" class="text-center py-5 text-muted">
+                                <td colspan="12" class="text-center py-5 text-muted">
                                     <i class="bi bi-inbox fs-1 d-block mb-3 opacity-25"></i>
                                     Topilmadi.
                                 </td>
@@ -442,8 +456,11 @@
 </script>
 
 <style>
-    /* Prevent text selection when clicking switches rapidly */
     .form-check-label { user-select: none; }
+    .health-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .health-green  { background: #16a34a; box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.18); }
+    .health-yellow { background: #f59e0b; box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.18); }
+    .health-red    { background: #dc2626; box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.18); }
 </style>
 <div class="modal fade" id="tagsEditModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">

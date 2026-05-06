@@ -127,7 +127,6 @@
                 <span class="stat-pill"><i class="bi bi-hash me-1"></i>{{ account.user_id|default:'—' }}</span>
             </div>
 
-            <!-- Status badges -->
             <div class="d-flex flex-wrap gap-2">
                 {% if account.is_active %}
                 <span class="badge bg-success px-3 py-2 rounded-pill fs-6 fw-semibold">
@@ -147,6 +146,12 @@
                     <i class="bi bi-shield-check me-1"></i>Spam emas
                 </span>
                 {% endif %}
+                {% with band=account.health_band %}
+                <span class="badge bg-{% if band == 'green' %}success{% elif band == 'yellow' %}warning{% else %}danger{% endif %} px-3 py-2 rounded-pill fs-6 fw-semibold"
+                      title="0–100 sog'lik balli">
+                    <i class="bi bi-heart-pulse-fill me-1"></i>{{ account.health_score }}
+                </span>
+                {% endwith %}
             </div>
         </div>
 
@@ -244,6 +249,19 @@
 
     <!-- ── TAB: Info ─────────────────────────────────────────── -->
     <div class="tab-pane fade show active" id="tab-info">
+        <div class="card border-0 shadow-sm rounded-0 rounded-bottom rounded-3 mb-3">
+            <div class="card-body p-4">
+                <div class="d-flex align-items-center mb-2 flex-wrap gap-2">
+                    <span class="fw-bold"><i class="bi bi-graph-up me-2 text-primary"></i>So'nggi 7 kun faolligi</span>
+                    <div class="ms-auto small d-flex gap-3">
+                        <span><span class="d-inline-block rounded-circle me-1" style="width:8px;height:8px;background:#22c55e"></span>Muvaffaqiyat</span>
+                        <span><span class="d-inline-block rounded-circle me-1" style="width:8px;height:8px;background:#ef4444"></span>Xato</span>
+                        <span><span class="d-inline-block rounded-circle me-1" style="width:8px;height:8px;background:#94a3b8"></span>Boshqa</span>
+                    </div>
+                </div>
+                <canvas id="activitySparkline" width="800" height="120" style="width:100%;height:120px;"></canvas>
+            </div>
+        </div>
         <div class="card border-0 shadow-sm rounded-0 rounded-bottom rounded-3">
             <div class="card-body p-4">
                 <div class="row g-4">
@@ -640,5 +658,53 @@ $(function(){
     if($('#groupsTable').length)   $('#groupsTable').DataTable(dtOpts);
     if($('#channelsTable').length) $('#channelsTable').DataTable(dtOpts);
 });
+</script>
+
+{{ activity|json_script:"activityData" }}
+<script>
+(function(){
+    const canvas = document.getElementById('activitySparkline');
+    const data = JSON.parse(document.getElementById('activityData').textContent || '[]');
+    if (!canvas || !data.length) return;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    const pad = 24;
+
+    let max = 1;
+    data.forEach(d => {
+        const total = (d.success || 0) + (d.error || 0) + (d.warning || 0) + (d.info || 0);
+        if (total > max) max = total;
+    });
+
+    ctx.clearRect(0, 0, W, H);
+    const barW = (W - pad * 2) / data.length;
+    data.forEach((d, i) => {
+        const x = pad + i * barW + 2;
+        const w = barW - 4;
+        const total = (d.success || 0) + (d.error || 0) + (d.warning || 0) + (d.info || 0);
+        const h = total === 0 ? 0 : ((H - pad - 8) * (total / max));
+        const y = H - pad - h;
+
+        if (h === 0) {
+            ctx.fillStyle = '#e5e7eb';
+            ctx.fillRect(x, H - pad - 4, w, 4);
+        } else {
+            const successPct = (d.success || 0) / total;
+            const errPct = (d.error || 0) / total;
+            const sH = h * successPct;
+            const eH = h * errPct;
+            const oH = h - sH - eH;
+            ctx.fillStyle = '#22c55e'; ctx.fillRect(x, y + oH + eH, w, sH);
+            ctx.fillStyle = '#ef4444'; ctx.fillRect(x, y + oH, w, eH);
+            ctx.fillStyle = '#94a3b8'; ctx.fillRect(x, y, w, oH);
+        }
+
+        ctx.fillStyle = '#9ca3af';
+        ctx.font = '10px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        const label = d.day.slice(5);
+        ctx.fillText(label, x + w/2, H - 6);
+    });
+})();
 </script>
 {% endblock %}

@@ -197,9 +197,36 @@ class TaskRunner:
         elif paused:
             await self.update_progress(status='paused')
             await self.log('warning', "Vazifa pauza qilindi — keyinroq davom ettirish mumkin")
+            await self._notify('task_paused')
         else:
             await self.update_progress(status='completed', finished_at=timezone.now())
             await self.log('success', success_message)
+            await self._notify('task_completed')
+
+    async def _notify(self, event):
+        try:
+            from notifications.services import send_notification
+        except ImportError:
+            return
+        snap = await Task.objects.filter(pk=self.task.pk).values(
+            'kind', 'success_count', 'error_count', 'total', 'owner_id',
+        ).afirst()
+        if not snap:
+            return
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        try:
+            user = await User.objects.aget(pk=snap['owner_id'])
+        except User.DoesNotExist:
+            return
+        await send_notification(
+            user, event,
+            **{
+                'Vazifa': f"#{self.task.pk} — {snap['kind']}",
+                'Bajarildi': f"{snap['success_count']}/{snap['total']}",
+                'Xato': snap['error_count'],
+            },
+        )
 
     async def quota_ok(self, account):
         """

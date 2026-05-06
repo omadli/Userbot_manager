@@ -12,9 +12,56 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
     
     <style>
+        :root {
+            --bg-app: #f4f6f9;
+            --bg-card: #ffffff;
+            --bg-soft: #f8fafc;
+            --bg-sidebar: #ffffff;
+            --text-primary: #111827;
+            --text-secondary: #4b5563;
+            --text-muted: #6b7280;
+            --border-soft: #e5e7eb;
+            --link-active-bg: #eff6ff;
+            --link-active-text: #2563eb;
+            --shadow-card: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);
+        }
+        body.theme-dark {
+            --bg-app: #0f172a;
+            --bg-card: #1e293b;
+            --bg-soft: #1a2238;
+            --bg-sidebar: #1e293b;
+            --text-primary: #f1f5f9;
+            --text-secondary: #cbd5e1;
+            --text-muted: #94a3b8;
+            --border-soft: #334155;
+            --link-active-bg: #1e3a8a;
+            --link-active-text: #93c5fd;
+            --shadow-card: 0 4px 12px rgba(0,0,0,0.4);
+            color-scheme: dark;
+        }
+        body.theme-dark .card { background-color: var(--bg-card); color: var(--text-primary); }
+        body.theme-dark .card-header,
+        body.theme-dark .card-footer { background-color: var(--bg-soft) !important; border-color: var(--border-soft) !important; color: var(--text-primary); }
+        body.theme-dark .table { color: var(--text-primary); }
+        body.theme-dark .table-light { background-color: var(--bg-soft) !important; color: var(--text-primary) !important; }
+        body.theme-dark .text-muted, body.theme-dark .text-dark { color: var(--text-secondary) !important; }
+        body.theme-dark .form-control, body.theme-dark .form-select,
+        body.theme-dark textarea { background-color: var(--bg-soft) !important; color: var(--text-primary) !important; border-color: var(--border-soft) !important; }
+        body.theme-dark .form-control::placeholder { color: var(--text-muted); }
+        body.theme-dark .border, body.theme-dark .border-bottom, body.theme-dark .border-top { border-color: var(--border-soft) !important; }
+        body.theme-dark .modal-content, body.theme-dark .dropdown-menu { background-color: var(--bg-card); color: var(--text-primary); }
+        body.theme-dark .dropdown-item { color: var(--text-primary); }
+        body.theme-dark .dropdown-item:hover { background-color: var(--bg-soft); }
+        body.theme-dark .bg-white { background-color: var(--bg-card) !important; }
+        body.theme-dark .bg-light { background-color: var(--bg-soft) !important; }
+        body.theme-dark a { color: #93c5fd; }
+        body.theme-dark .btn-light { background: var(--bg-soft); color: var(--text-primary); border-color: var(--border-soft); }
+        body.theme-dark .btn-close { filter: invert(1); }
+
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #f4f6f9;
+            background-color: var(--bg-app);
+            color: var(--text-primary);
         }
 
         /* ── Sidebar: fixed on lg+, slides in as offcanvas on smaller ── */
@@ -24,7 +71,7 @@
             position: fixed;
             left: 0;
             top: 0;
-            background: #ffffff;
+            background: var(--bg-sidebar);
             box-shadow: 2px 0 10px rgba(0,0,0,0.05);
             transition: transform 0.3s ease;
             z-index: 1040;
@@ -87,7 +134,7 @@
         }
 
         .nav-link {
-            color: #4b5563;
+            color: var(--text-secondary);
             font-weight: 500;
             padding: 12px 20px;
             border-radius: 8px;
@@ -95,8 +142,8 @@
             transition: all 0.2s;
         }
         .nav-link:hover, .nav-link.active {
-            background-color: #eff6ff;
-            color: #2563eb;
+            background-color: var(--link-active-bg);
+            color: var(--link-active-text);
         }
         .nav-link i {
             margin-right: 10px;
@@ -105,7 +152,7 @@
         .brand-logo {
             font-size: 1.25rem;
             font-weight: 700;
-            color: #111827;
+            color: var(--text-primary);
             padding: 20px;
             display: flex;
             align-items: center;
@@ -118,7 +165,7 @@
         .card {
             border: none;
             border-radius: 12px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+            box-shadow: var(--shadow-card);
             transition: transform 0.2s, box-shadow 0.2s;
         }
         .badge {
@@ -158,13 +205,15 @@
 <body>
 
 {% if user.is_authenticated %}
-<!-- Mobile top bar (hidden on lg+) -->
 <div class="mobile-topbar">
     <button class="menu-btn" type="button" id="sidebarToggle" aria-label="Menyu">
         <i class="bi bi-list"></i>
     </button>
     <i class="bi bi-robot text-primary fs-4"></i>
     <span class="brand-text">Account Pro</span>
+    <button type="button" class="ms-auto btn btn-sm btn-light border rounded-circle theme-toggle" title="Tema">
+        <i class="bi bi-circle-half"></i>
+    </button>
 </div>
 
 <!-- Backdrop for offcanvas sidebar -->
@@ -221,6 +270,11 @@
                 <i class="bi bi-bar-chart-fill"></i> Statistika
             </a>
         </li>
+        <li class="nav-item">
+            <a href="{% url 'notifications:settings' %}" class="nav-link {% if request.resolver_match.namespace == 'notifications' %}active{% endif %}">
+                <i class="bi bi-bell-fill"></i> Bildirishnomalar
+            </a>
+        </li>
         {% if user.is_superuser %}
         <li class="nav-item">
             <a href="{% url 'jobs:script_list' %}" class="nav-link {% if request.resolver_match.namespace == 'jobs' and 'script' in request.resolver_match.url_name %}active{% endif %}">
@@ -242,6 +296,17 @@
                 <small class="text-muted">Profil</small>
             </div>
         </a>
+        <div class="d-flex gap-2 mb-2">
+            <button type="button" class="btn btn-light flex-grow-1 fw-medium border shadow-sm rounded-pill theme-toggle"
+                    title="Tema (yorug' / qorong'i)">
+                <i class="bi bi-circle-half me-1"></i><span class="theme-toggle-label">Tema</span>
+            </button>
+            <button type="button" class="btn btn-light fw-medium border shadow-sm rounded-pill px-3"
+                    onclick="document.dispatchEvent(new KeyboardEvent('keydown',{key:'?',shiftKey:true}))"
+                    title="Shortcuts (?)">
+                <i class="bi bi-keyboard"></i>
+            </button>
+        </div>
         <form action="{% url 'logout' %}" method="post" class="m-0">
              {% csrf_token %}
              <button type="submit" class="btn btn-light w-100 text-danger fw-bold border shadow-sm rounded-pill">
@@ -274,6 +339,39 @@
 {% if user.is_authenticated %}
 <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1080;" id="toastStack"></div>
 
+<div class="modal fade" id="shortcutsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" style="max-width: 520px;">
+    <div class="modal-content border-0 shadow-lg rounded-4">
+      <div class="modal-header py-3">
+        <h5 class="modal-title fw-bold"><i class="bi bi-keyboard me-2"></i>Klaviatura yorliqlari</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
+            <span>Tezkor qidiruv (Komandalar palitri)</span>
+            <kbd>Ctrl</kbd> + <kbd>K</kbd>
+        </div>
+        <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
+            <span>Yorliqlar oynasini ochish</span>
+            <kbd>?</kbd>
+        </div>
+        <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
+            <span>Yorug' / qorong'i temani almashtirish</span>
+            <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>L</kbd>
+        </div>
+        <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
+            <span>Chat / forma yuborish</span>
+            <kbd>Ctrl</kbd> + <kbd>Enter</kbd>
+        </div>
+        <div class="d-flex justify-content-between align-items-center py-2">
+            <span>Modal yopish</span>
+            <kbd>Esc</kbd>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal fade" id="cmdkModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered" style="max-width: 600px;">
     <div class="modal-content border-0 shadow-lg rounded-4">
@@ -302,22 +400,51 @@
     const toggle = document.getElementById('sidebarToggle');
     const backdrop = document.getElementById('sidebarBackdrop');
     const sidebar = document.getElementById('sidebar');
-    if (!toggle || !backdrop || !sidebar) return;
-
-    const open  = () => document.body.classList.add('sidebar-open');
-    const close = () => document.body.classList.remove('sidebar-open');
-
-    toggle.addEventListener('click', () => {
-        document.body.classList.toggle('sidebar-open');
-    });
-    backdrop.addEventListener('click', close);
-    sidebar.querySelectorAll('a.nav-link').forEach(a => {
-        a.addEventListener('click', () => {
-            if (window.matchMedia('(max-width: 991.98px)').matches) close();
+    if (toggle && backdrop && sidebar) {
+        const close = () => document.body.classList.remove('sidebar-open');
+        toggle.addEventListener('click', () => document.body.classList.toggle('sidebar-open'));
+        backdrop.addEventListener('click', close);
+        sidebar.querySelectorAll('a.nav-link').forEach(a => {
+            a.addEventListener('click', () => {
+                if (window.matchMedia('(max-width: 991.98px)').matches) close();
+            });
         });
+        window.addEventListener('resize', () => {
+            if (!window.matchMedia('(max-width: 991.98px)').matches) close();
+        });
+    }
+
+    const THEME_KEY = 'app-theme';
+    function applyTheme(name) {
+        if (name === 'dark') document.body.classList.add('theme-dark');
+        else document.body.classList.remove('theme-dark');
+    }
+    function currentTheme() {
+        return localStorage.getItem(THEME_KEY) || 'light';
+    }
+    function toggleTheme() {
+        const next = currentTheme() === 'dark' ? 'light' : 'dark';
+        localStorage.setItem(THEME_KEY, next);
+        applyTheme(next);
+    }
+    applyTheme(currentTheme());
+    document.querySelectorAll('.theme-toggle').forEach(btn => {
+        btn.addEventListener('click', toggleTheme);
     });
-    window.addEventListener('resize', () => {
-        if (!window.matchMedia('(max-width: 991.98px)').matches) close();
+
+    document.addEventListener('keydown', e => {
+        const tag = (e.target && e.target.tagName) || '';
+        const inField = ['INPUT', 'TEXTAREA', 'SELECT'].includes(tag) || (e.target && e.target.isContentEditable);
+        if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'l') {
+            e.preventDefault();
+            toggleTheme();
+            return;
+        }
+        if (e.key === '?' && !inField && typeof bootstrap !== 'undefined') {
+            e.preventDefault();
+            const el = document.getElementById('shortcutsModal');
+            if (el) bootstrap.Modal.getOrCreateInstance(el).show();
+        }
     });
 })();
 </script>
@@ -452,7 +579,8 @@
             const li = document.createElement('li');
             li.className = 'list-group-item d-flex align-items-center gap-3 border-0 rounded-3 my-1' + (i === activeIdx ? ' active bg-primary text-white' : '');
             li.style.cursor = 'pointer';
-            li.innerHTML = `<i class="bi ${c.icon} fs-5"></i><span class="fw-medium">${c.label}</span>`;
+            const hint = c.hint ? `<small class="ms-auto opacity-75">${c.hint}</small>` : '';
+            li.innerHTML = `<i class="bi ${c.icon} fs-5"></i><span class="fw-medium">${c.label}</span>${hint}`;
             li.addEventListener('click', () => execute(c));
             li.addEventListener('mouseenter', () => { activeIdx = i; updateActive(); });
             list.appendChild(li);
@@ -476,21 +604,51 @@
         else if (c.action) { runAction(c.action); }
     }
 
+    let dynamicResults = [];
+    let searchSeq = 0;
+
     function filter(q) {
         q = q.trim().toLowerCase();
-        if (!q) {
-            filtered = COMMANDS.slice();
-        } else {
-            filtered = COMMANDS.filter(c =>
+        const base = q
+            ? COMMANDS.filter(c =>
                 c.label.toLowerCase().includes(q) ||
-                (c.keywords || '').toLowerCase().includes(q)
-            );
-        }
+                (c.keywords || '').toLowerCase().includes(q))
+            : COMMANDS.slice();
+        filtered = base.concat(dynamicResults);
         activeIdx = 0;
         render();
     }
 
-    input.addEventListener('input', () => filter(input.value));
+    let searchTimer = null;
+    async function fetchDynamic(q) {
+        const seq = ++searchSeq;
+        if (q.length < 2) {
+            dynamicResults = [];
+            filter(input.value);
+            return;
+        }
+        try {
+            const r = await fetch(`/accounts/search/?q=${encodeURIComponent(q)}`, { credentials: 'same-origin' });
+            if (!r.ok) return;
+            const data = await r.json();
+            if (seq !== searchSeq) return;
+            dynamicResults = (data.results || []).map(item => ({
+                label: item.label,
+                href: item.href,
+                icon: item.icon || 'bi-arrow-right-circle',
+                keywords: '',
+                hint: item.hint,
+            }));
+            filter(input.value);
+        } catch (e) {}
+    }
+
+    input.addEventListener('input', () => {
+        filter(input.value);
+        const q = input.value.trim();
+        if (searchTimer) clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => fetchDynamic(q), 200);
+    });
 
     input.addEventListener('keydown', e => {
         if (e.key === 'ArrowDown') {

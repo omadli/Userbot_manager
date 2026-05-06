@@ -25,6 +25,11 @@ class AccountFilter(django_filters.FilterSet):
         label="Teglar",
     )
 
+    health_lt = django_filters.NumberFilter(
+        field_name='health_score', lookup_expr='lt',
+        label="Sog'lik balli pastroq",
+    )
+
     o = django_filters.OrderingFilter(
         choices=(
             ('-groups_count', "Guruhlar ko'p"),
@@ -40,7 +45,7 @@ class AccountFilter(django_filters.FilterSet):
 
     class Meta:
         model = Account
-        fields = ['search', 'is_active', 'is_spam', 'country_code', 'tags']
+        fields = ['search', 'is_active', 'is_spam', 'country_code', 'tags', 'health_lt']
 
     def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)

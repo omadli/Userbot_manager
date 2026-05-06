@@ -1,0 +1,103 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex align-items-center mb-4 flex-wrap gap-2">
+    <a href="{% url 'accounts:dashboard' %}" class="text-muted text-decoration-none small me-3">
+        <i class="bi bi-arrow-left me-1"></i>Akkauntlar
+    </a>
+    <h2 class="fw-bold mb-0">
+        <i class="bi bi-upload text-primary me-2"></i>Akkauntlarni import qilish
+    </h2>
+</div>
+
+<form method="post" enctype="multipart/form-data" class="row g-3">
+    {% csrf_token %}
+
+    <div class="col-lg-8">
+        <div class="card shadow-sm border-0 mb-3">
+            <div class="card-header bg-white border-bottom py-3">
+                <span class="fw-bold"><i class="bi bi-filetype-csv me-2"></i>CSV ma'lumotlari</span>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label fw-bold small text-uppercase text-muted">CSV fayl yuklash</label>
+                    <input type="file" name="csv_file" accept=".csv,.txt" class="form-control rounded-3">
+                </div>
+                <div class="text-center text-muted small my-2">— yoki to'g'ridan-to'g'ri matnga yopishtiring —</div>
+                <textarea name="csv_text" rows="10" class="form-control font-monospace small"
+                          placeholder="phone_number,session_string,api_id,api_hash,first_name,last_name,two_fa_password
++998901234567,1AaBbCc...QQ==,12345,abc123def...,Ali,Valiev,
++998907654321,1AaBbCc...XX==,,,Komron,,
+"></textarea>
+
+                <div class="mt-3 small text-muted">
+                    <strong>Qabul qilinadigan ustunlar (vergul yoki <code>|</code> bilan ajratilgan):</strong>
+                    <code>phone_number</code>, <code>session_string</code>, <code>api_id</code>,
+                    <code>api_hash</code>, <code>first_name</code>, <code>last_name</code>,
+                    <code>username</code>, <code>two_fa_password</code>, <code>email</code>.
+                    Birinchi qatorda sarlavha bo'lishi mumkin (avtomatik aniqlanadi).
+                </div>
+            </div>
+        </div>
+
+        <div class="alert alert-info border-0 rounded-4 small">
+            <i class="bi bi-info-circle me-1"></i>
+            Default validation har sessiyani <code>get_me()</code> orqali tekshiradi (3-5s/akkaunt).
+            Ko'p akkauntlarda tezkor import uchun "Validatsiyani o'tkazib yuborish" tanlang —
+            keyinroq dashboard'dan qo'lda tekshirsa bo'ladi.
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card shadow-sm border-0 mb-3">
+            <div class="card-header bg-white border-bottom py-3">
+                <span class="fw-bold"><i class="bi bi-gear-fill me-2"></i>Default sozlamalar</span>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label fw-bold small text-uppercase text-muted">Proxy</label>
+                    <select name="default_proxy" class="form-select rounded-3">
+                        <option value="">— Yo'q —</option>
+                        {% for p in proxies %}
+                        <option value="{{ p.pk }}">{{ p.name }} ({{ p.host }}:{{ p.port }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold small text-uppercase text-muted">Device</label>
+                    <select name="default_device" class="form-select rounded-3">
+                        <option value="">— Default —</option>
+                        {% for d in devices %}
+                        <option value="{{ d.pk }}">{{ d.device_model }} · {{ d.system_version }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold small text-uppercase text-muted">Tag(lar)</label>
+                    <div class="d-flex flex-wrap gap-2">
+                        {% for t in tags %}
+                        <label class="d-inline-flex align-items-center gap-2 px-3 py-1 border rounded-pill bg-light"
+                               style="cursor: pointer; user-select: none;">
+                            <input type="checkbox" name="default_tags" value="{{ t.pk }}" class="form-check-input m-0">
+                            <span class="small">{{ t.name }}</span>
+                        </label>
+                        {% empty %}
+                        <span class="text-muted small">Tag yo'q. <a href="{% url 'accounts:tag_list' %}">Yarating</a>.</span>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="skip_validation" name="skip_validation">
+                    <label class="form-check-label fw-medium small" for="skip_validation">
+                        Validatsiyani o'tkazib yuborish (tezroq, lekin yaroqsiz sessiyalarni topa olmaydi)
+                    </label>
+                </div>
+            </div>
+            <div class="card-footer bg-white py-3">
+                <button type="submit" class="btn btn-primary rounded-pill w-100 py-2 fw-bold">
+                    <i class="bi bi-upload me-1"></i>Import qilish
+                </button>
+            </div>
+        </div>
+    </div>
+</form>
+{% endblock %}

@@ -44,6 +44,7 @@ urlpatterns = [
     path('groups/', include('groups.urls')),
     path('channels/', include('channels.urls')),
     path('jobs/', include('jobs.urls')),
+    path('notifications/', include('notifications.urls')),
 ]
 
 if settings.DEBUG:

@@ -87,10 +87,37 @@ ACCOUNT_BANNED_EXCEPTIONS = (
 
 async def _mark_session_dead(account_pk):
     await Account.objects.filter(pk=account_pk).aupdate(is_active=False)
+    await _notify_account_event(account_pk, 'account_session_dead')
 
 
 async def _mark_account_banned(account_pk):
     await Account.objects.filter(pk=account_pk).aupdate(is_active=False, is_spam=True)
+    await _notify_account_event(account_pk, 'account_banned')
+
+
+async def _notify_account_event(account_pk, event):
+    try:
+        from notifications.services import send_notification
+    except ImportError:
+        return
+    snap = await Account.objects.filter(pk=account_pk).values(
+        'phone_number', 'first_name', 'owner_id',
+    ).afirst()
+    if not snap or not snap['owner_id']:
+        return
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    try:
+        user = await User.objects.aget(pk=snap['owner_id'])
+    except User.DoesNotExist:
+        return
+    name = snap['first_name'] or snap['phone_number']
+    await send_notification(
+        user, event,
+        **{
+            'Akkaunt': f"{name} ({snap['phone_number']})",
+        },
+    )
 
 
 # ---------------------------------------------------------------------------

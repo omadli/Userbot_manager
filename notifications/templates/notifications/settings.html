@@ -1,0 +1,117 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex align-items-center mb-4 flex-wrap gap-2">
+    <h2 class="fw-bold mb-0">
+        <i class="bi bi-bell-fill text-warning me-2"></i>Bildirishnomalar
+    </h2>
+    {% if cfg.is_configured %}
+    <span class="badge bg-success bg-opacity-10 text-success border ms-2">
+        <i class="bi bi-check-circle me-1"></i>Sozlangan
+    </span>
+    {% else %}
+    <span class="badge bg-secondary bg-opacity-10 text-secondary border ms-2">Sozlanmagan</span>
+    {% endif %}
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-7">
+        <form method="post" class="card shadow-sm border-0">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="save">
+            <div class="card-header bg-white py-3">
+                <span class="fw-bold"><i class="bi bi-telegram me-2 text-primary"></i>Telegram bot orqali yuborish</span>
+            </div>
+            <div class="card-body">
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="enabled" name="enabled"
+                           {% if cfg.enabled %}checked{% endif %}>
+                    <label class="form-check-label fw-medium" for="enabled">
+                        Bildirishnomalarni yoqish
+                    </label>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold small text-uppercase text-muted">Bot Token</label>
+                    <input type="text" name="bot_token" value="{{ cfg.bot_token }}"
+                           class="form-control rounded-3 font-monospace"
+                           placeholder="123456:ABC-DEF...">
+                    <small class="text-muted">
+                        @BotFather'ga <code>/newbot</code> yuboring va olingan tokenni shu yerga yopishtiring.
+                    </small>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold small text-uppercase text-muted">Chat ID</label>
+                    <input type="text" name="chat_id" value="{{ cfg.chat_id }}"
+                           class="form-control rounded-3 font-monospace"
+                           placeholder="123456789">
+                    <small class="text-muted">
+                        Botingizga <code>/start</code> yuboring, keyin
+                        <code>https://api.telegram.org/bot&lt;TOKEN&gt;/getUpdates</code> orqali
+                        <code>chat.id</code>'ni oling. Yoki @userinfobot orqali ko'ring.
+                    </small>
+                </div>
+
+                <hr>
+
+                <div class="mb-2">
+                    <label class="form-label fw-bold small text-uppercase text-muted">Eventlar</label>
+                </div>
+                <div class="row g-2">
+                    {% for value, label in event_choices %}
+                    <div class="col-md-6">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox"
+                                   id="ev-{{ value }}" name="events" value="{{ value }}"
+                                   {% if value in enabled_events %}checked{% endif %}>
+                            <label class="form-check-label" for="ev-{{ value }}">{{ label }}</label>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="card-footer bg-white d-flex flex-wrap gap-2 py-3">
+                <button type="submit" class="btn btn-primary rounded-pill px-4 fw-bold">
+                    <i class="bi bi-check-lg me-1"></i>Saqlash
+                </button>
+                <button type="submit" formaction="{% url 'notifications:settings' %}"
+                        formmethod="post" class="btn btn-outline-secondary rounded-pill px-4"
+                        name="action" value="test">
+                    <i class="bi bi-send-fill me-1"></i>Test yuborish
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <div class="col-lg-5">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-header bg-white py-3">
+                <span class="fw-bold"><i class="bi bi-info-circle me-2 text-info"></i>Qisqacha qo'llanma</span>
+            </div>
+            <div class="card-body small">
+                <ol class="ps-3 mb-3">
+                    <li class="mb-2">
+                        Telegram'da <a href="https://t.me/BotFather" target="_blank">@BotFather</a>'ga kiring,
+                        <code>/newbot</code> yuboring, nom va username bering.
+                    </li>
+                    <li class="mb-2">
+                        Olingan <strong>token</strong>'ni yuqorida belgilangan maydonga yopishtiring.
+                    </li>
+                    <li class="mb-2">
+                        Yangi yaratgan botingizga <code>/start</code> yuboring (siz bilan ulanish ochiladi).
+                    </li>
+                    <li class="mb-2">
+                        <a href="https://t.me/userinfobot" target="_blank">@userinfobot</a>'ga kirib o'zingizning
+                        <strong>chat ID</strong>'ingizni oling — uni yopishtiring.
+                    </li>
+                    <li>"Test yuborish" — ulanish ishlayotganini tekshiring.</li>
+                </ol>
+                <div class="alert alert-warning border-0 small mb-0">
+                    <i class="bi bi-shield-exclamation me-1"></i>
+                    Token xavfsiz saqlanadi (DB ichida). Boshqa odamlar bilan baham ko'rmang.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

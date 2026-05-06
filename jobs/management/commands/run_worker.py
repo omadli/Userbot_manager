@@ -164,7 +164,54 @@ class Command(BaseCommand):
                 f"[{self._ts()}] ✓ Task #{task.pk} done"
             ))
 
+        await self._notify_terminal(task.pk)
+        await self._refresh_health(task.pk)
         await self._schedule_next_occurrence(task.pk)
+
+    async def _refresh_health(self, pk):
+        try:
+            from accounts.health import recompute_for_user
+        except ImportError:
+            return
+        snap = await Task.objects.filter(pk=pk).values('owner_id').afirst()
+        if not snap or not snap['owner_id']:
+            return
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        try:
+            user = await User.objects.aget(pk=snap['owner_id'])
+        except User.DoesNotExist:
+            return
+        from asgiref.sync import sync_to_async as _s2a
+        try:
+            await _s2a(recompute_for_user)(user)
+        except Exception:
+            pass
+
+    async def _notify_terminal(self, pk):
+        try:
+            from notifications.services import send_notification
+        except ImportError:
+            return
+        snap = await Task.objects.filter(pk=pk).values(
+            'status', 'kind', 'success_count', 'error_count', 'total', 'owner_id', 'error',
+        ).afirst()
+        if not snap or snap['status'] != 'failed':
+            return
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        try:
+            user = await User.objects.aget(pk=snap['owner_id'])
+        except User.DoesNotExist:
+            return
+        await send_notification(
+            user, 'task_failed',
+            **{
+                'Vazifa': f"#{pk} — {snap['kind']}",
+                'Bajarildi': f"{snap['success_count']}/{snap['total']}",
+                'Xato': (snap['error'] or '')[:200],
+            },
+        )
 
     @staticmethod
     def _ts():

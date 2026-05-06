@@ -165,6 +165,14 @@ class Account(models.Model):
     quota_window_start = models.DateField(null=True, blank=True, verbose_name="Byudjet oynasi boshlandi")
     quota_window_count = models.PositiveIntegerField(default=0, verbose_name="Bugun bajarilgan")
 
+    health_score = models.PositiveSmallIntegerField(
+        default=100, verbose_name="Sog'lik balli",
+        help_text="0–100. Quyi → akkaunt risk ostida.",
+    )
+    health_score_at = models.DateTimeField(null=True, blank=True, verbose_name="Sog'lik baholangan vaqt")
+    last_successful_op_at = models.DateTimeField(null=True, blank=True, verbose_name="Oxirgi muvaffaqiyatli operatsiya")
+    flood_wait_count_24h = models.PositiveIntegerField(default=0, verbose_name="So'nggi 24h FloodWait soni")
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -193,3 +201,15 @@ class Account(models.Model):
             return country_name_for_number(pn, "en")
         except:
             return "Unknown"
+
+    @property
+    def health_band(self):
+        """Three-tier label for the dashboard badge color: green/yellow/red."""
+        s = self.health_score or 0
+        if not self.is_active or self.is_spam:
+            return 'red'
+        if s >= 75:
+            return 'green'
+        if s >= 40:
+            return 'yellow'
+        return 'red'
