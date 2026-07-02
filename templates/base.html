@@ -271,6 +271,61 @@
             }
             .sidebar-backdrop { backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); }
         }
+
+        /* ── Mobile bottom navigation (thumb reach). Hidden on lg+ where the
+           persistent sidebar lives. ── */
+        .bottom-nav { display: none; }
+        @media (max-width: 991.98px) {
+            .bottom-nav {
+                display: flex;
+                justify-content: space-around;
+                align-items: center;
+                position: fixed;
+                left: 0; right: 0; bottom: 0;
+                z-index: 1025;
+                background: var(--bg-sidebar);
+                border-top: 1px solid var(--border-soft);
+                box-shadow: 0 -2px 12px rgba(0,0,0,0.06);
+                height: calc(62px + env(safe-area-inset-bottom));
+                padding-bottom: env(safe-area-inset-bottom);
+            }
+            /* Clear the fixed bottom bar */
+            .main-content { padding-bottom: calc(78px + env(safe-area-inset-bottom)); }
+
+            .bn-item {
+                flex: 1;
+                display: flex; flex-direction: column;
+                align-items: center; justify-content: center;
+                gap: 2px;
+                background: none; border: 0;
+                color: var(--text-muted);
+                font-size: 0.64rem; font-weight: 600;
+                text-decoration: none;
+                padding: 6px 0;
+                position: relative;
+                min-width: 0;
+            }
+            .bn-item i { font-size: 1.25rem; }
+            .bn-item.active { color: var(--link-active-text); }
+            .bn-item:active { opacity: 0.55; }
+            .bn-fab {
+                flex: 0 0 auto;
+                width: 54px; height: 54px;
+                margin-top: -22px;
+                border-radius: 50%;
+                background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+                color: #fff !important;
+                box-shadow: 0 6px 16px rgba(37, 99, 235, 0.45);
+            }
+            .bn-fab i { font-size: 1.45rem; }
+            .bn-badge {
+                position: absolute; top: 3px; left: 50%;
+                transform: translateX(40%);
+                min-width: 16px; height: 16px; padding: 0 4px;
+                background: #ef4444; color: #fff; border-radius: 999px;
+                font-size: 0.6rem; line-height: 16px; text-align: center; font-weight: 700;
+            }
+        }
     </style>
 </head>
 <body>
@@ -415,6 +470,28 @@
 
     {% block content %}{% endblock %}
 </div>
+
+<!-- Mobile bottom navigation — thumb-reachable primary actions. -->
+<nav class="bottom-nav">
+    <a href="{% url 'accounts:dashboard' %}"
+       class="bn-item {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">
+        <i class="bi bi-person-lines-fill"></i><span>Akkauntlar</span>
+    </a>
+    <a href="{% url 'jobs:task_list' %}"
+       class="bn-item {% if request.resolver_match.namespace == 'jobs' and 'task' in request.resolver_match.url_name %}active{% endif %}">
+        <i class="bi bi-activity"></i><span>Vazifalar</span>
+        <span id="bnTaskBadge" class="bn-badge d-none"></span>
+    </a>
+    <a href="{% url 'accounts:add_account' %}" class="bn-item bn-fab" aria-label="Yangi akkaunt">
+        <i class="bi bi-plus-lg"></i>
+    </a>
+    <button type="button" class="bn-item mobile-search-btn" aria-label="Qidiruv">
+        <i class="bi bi-search"></i><span>Qidiruv</span>
+    </button>
+    <button type="button" class="bn-item" id="bottomNavMenu" aria-label="Ko'proq">
+        <i class="bi bi-grid"></i><span>Ko'proq</span>
+    </button>
+</nav>
 {% else %}
     <!-- Public Layout -->
     <div class="container h-100 d-flex align-items-center justify-content-center" style="min-height: 100vh;">
@@ -490,6 +567,9 @@
         const close = () => document.body.classList.remove('sidebar-open');
         toggle.addEventListener('click', () => document.body.classList.toggle('sidebar-open'));
         backdrop.addEventListener('click', close);
+        // Bottom-nav "Ko'proq" opens the same drawer.
+        const bnMenu = document.getElementById('bottomNavMenu');
+        if (bnMenu) bnMenu.addEventListener('click', () => document.body.classList.toggle('sidebar-open'));
         sidebar.querySelectorAll('a.nav-link').forEach(a => {
             a.addEventListener('click', () => {
                 if (window.matchMedia('(max-width: 991.98px)').matches) close();
@@ -545,6 +625,7 @@
 <script>
 (function(){
     const badge = document.getElementById('runningTaskBadge');
+    const bnBadge = document.getElementById('bnTaskBadge');
     const stack = document.getElementById('toastStack');
     if (!badge || !stack || typeof bootstrap === 'undefined') return;
 
@@ -591,8 +672,10 @@
             if (data.running > 0) {
                 badge.textContent = data.running;
                 badge.classList.remove('d-none');
+                if (bnBadge) { bnBadge.textContent = data.running; bnBadge.classList.remove('d-none'); }
             } else {
                 badge.classList.add('d-none');
+                if (bnBadge) bnBadge.classList.add('d-none');
             }
             if (!suppressToasts && data.finished && data.finished.length) {
                 data.finished.slice().reverse().forEach(spawnToast);
