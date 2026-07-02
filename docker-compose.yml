@@ -98,6 +98,11 @@ services:
     volumes:
       - ./media:/app/media
       - ./logs:/app/logs
+      # `make backup` writes backups/<ts>/ on the host, then invokes
+      # `backup_to_telegram /app/backups/<ts>` INSIDE this container. Without
+      # this mount the directory is invisible here and the upload fails with
+      # "Not a directory". Read-only — the worker only reads the dumps.
+      - ./backups:/app/backups:ro
     command: ["worker"]
     logging: *default-logging
     # Telethon sessions live in the DB — no extra volume needed.

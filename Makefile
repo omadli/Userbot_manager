@@ -72,7 +72,7 @@ backup: ## Dump postgres + media to ./backups/<timestamp>/, then push to Telegra
 	chmod 600 "$$dir/.env.backup"; \
 	echo "Backup complete: $$dir"; \
 	$(COMPOSE) exec -T -w /app worker python manage.py backup_to_telegram "/app/$$dir" || \
-	  echo "(Telegram upload skipped — set BACKUP_BOT_TOKEN/BACKUP_CHAT_ID to enable)"
+	  echo "⚠ Telegram delivery failed (see the error above) — local backup in $$dir is intact"
 
 backup-telegram: ## Re-send a specific backup to Telegram — set TS=YYYYMMDD_HHMMSS
 	@if [ -z "$$TS" ]; then echo "Usage: make backup-telegram TS=YYYYMMDD_HHMMSS"; exit 1; fi
