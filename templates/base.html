@@ -326,6 +326,31 @@
                 font-size: 0.6rem; line-height: 16px; text-align: center; font-weight: 700;
             }
         }
+
+        /* ── Pull-to-refresh. Custom so it also works in the installed PWA,
+           where the browser's native pull gesture is unavailable. `contain`
+           kills the native gesture so the two don't both fire. ── */
+        body { overscroll-behavior-y: contain; }
+        .ptr-indicator {
+            position: fixed;
+            top: calc(58px + env(safe-area-inset-top));
+            left: 50%;
+            transform: translateX(-50%) translateY(0);
+            width: 38px; height: 38px;
+            display: flex; align-items: center; justify-content: center;
+            background: var(--bg-card);
+            border: 1px solid var(--border-soft);
+            border-radius: 50%;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+            color: var(--link-active-text);
+            font-size: 1.15rem;
+            opacity: 0;
+            z-index: 1019;
+            pointer-events: none;
+            transition: opacity 0.2s ease, transform 0.15s ease;
+        }
+        .ptr-indicator.spinning i { display: inline-block; animation: ptr-spin 0.7s linear infinite; }
+        @keyframes ptr-spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
@@ -862,6 +887,71 @@
     document.querySelectorAll('.mobile-search-btn').forEach(function (b) {
         b.addEventListener('click', function () { modal.show(); });
     });
+})();
+</script>
+
+<script>
+(function () {
+    // ── Pull-to-refresh (mobile / installed PWA). All listeners passive, so
+    // there's no scroll-performance cost; overscroll-behavior handles the
+    // native gesture. ──
+    if ('ontouchstart' in window) {
+        const scroller = document.scrollingElement || document.documentElement;
+        const ind = document.createElement('div');
+        ind.className = 'ptr-indicator';
+        ind.innerHTML = '<i class="bi bi-arrow-clockwise"></i>';
+        document.body.appendChild(ind);
+        const THRESHOLD = 72;
+        let startY = 0, active = false, dist = 0;
+
+        window.addEventListener('touchstart', function (e) {
+            active = window.innerWidth < 992
+                && scroller.scrollTop <= 0
+                && !document.body.classList.contains('sidebar-open')
+                && e.touches.length === 1;
+            startY = e.touches[0].clientY;
+            dist = 0;
+        }, { passive: true });
+
+        window.addEventListener('touchmove', function (e) {
+            if (!active) return;
+            dist = e.touches[0].clientY - startY;
+            if (dist > 0) {
+                const pull = Math.min(dist, THRESHOLD + 40);
+                ind.style.transform = 'translateX(-50%) translateY(' + (pull * 0.5) + 'px) rotate(' + (pull * 2.4) + 'deg)';
+                ind.style.opacity = Math.min(dist / THRESHOLD, 1);
+            }
+        }, { passive: true });
+
+        window.addEventListener('touchend', function () {
+            if (!active) return;
+            active = false;
+            if (dist > THRESHOLD) {
+                ind.classList.add('spinning');
+                ind.style.opacity = 1;
+                ind.style.transform = 'translateX(-50%) translateY(36px)';
+                if (navigator.vibrate) navigator.vibrate(8);
+                location.reload();
+            } else {
+                ind.style.opacity = 0;
+                ind.style.transform = 'translateX(-50%) translateY(0)';
+            }
+        }, { passive: true });
+    }
+
+    // ── Swipe the open drawer left to close it. ──
+    const sidebar = document.getElementById('sidebar');
+    if (sidebar) {
+        let x0 = null;
+        sidebar.addEventListener('touchstart', function (e) { x0 = e.touches[0].clientX; }, { passive: true });
+        sidebar.addEventListener('touchmove', function (e) {
+            if (x0 !== null && e.touches[0].clientX - x0 < -55) {
+                document.body.classList.remove('sidebar-open');
+                x0 = null;
+            }
+        }, { passive: true });
+        sidebar.addEventListener('touchend', function () { x0 = null; }, { passive: true });
+    }
 })();
 </script>
 {% endif %}
