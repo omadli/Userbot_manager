@@ -2,15 +2,29 @@
 <html lang="uz">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Account Menejeri</title>
-    <!-- Set Bootstrap's theme attribute before CSS paints so dark mode doesn't
-         flash white tables/cards on load. Body `.theme-dark` is added later. -->
+
+    <!-- Mobile / installable-app hints. theme-color paints the browser UI
+         (status bar) to match the app theme; the apple-* tags let iOS run it
+         full-screen when added to the home screen. -->
+    <meta name="theme-color" id="metaThemeColor" content="#ffffff">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Account Pro">
+
+    <!-- Set the Bootstrap theme + status-bar color before CSS paints so dark
+         mode doesn't flash white tables/cards on load. Body `.theme-dark` is
+         added later by the main theme script. -->
     <script>
         (function () {
             try {
                 var t = localStorage.getItem('app-theme') || 'light';
-                document.documentElement.setAttribute('data-bs-theme', t === 'dark' ? 'dark' : 'light');
+                var dark = t === 'dark';
+                document.documentElement.setAttribute('data-bs-theme', dark ? 'dark' : 'light');
+                var m = document.getElementById('metaThemeColor');
+                if (m) m.setAttribute('content', dark ? '#1e293b' : '#ffffff');
             } catch (e) {}
         })();
     </script>
@@ -109,8 +123,8 @@
             body.sidebar-open .sidebar-backdrop { display: block; }
             .main-content {
                 margin-left: 0;
-                padding: 16px;
-                padding-top: 76px;  /* clear the fixed mobile top bar */
+                padding: 16px calc(16px + env(safe-area-inset-right)) 16px calc(16px + env(safe-area-inset-left));
+                padding-top: calc(76px + env(safe-area-inset-top));  /* clear the fixed top bar + notch */
             }
             .mobile-topbar {
                 display: flex;
@@ -118,9 +132,9 @@
                 gap: 12px;
                 position: fixed;
                 top: 0; left: 0; right: 0;
-                height: 60px;
+                height: calc(60px + env(safe-area-inset-top));
                 background: #ffffff;
-                padding: 0 16px;
+                padding: env(safe-area-inset-top) calc(16px + env(safe-area-inset-right)) 0 calc(16px + env(safe-area-inset-left));
                 box-shadow: 0 2px 6px rgba(0,0,0,0.05);
                 z-index: 1020;
             }
@@ -140,7 +154,10 @@
         }
 
         @media (max-width: 575.98px) {
-            .main-content { padding: 12px; padding-top: 72px; }
+            .main-content {
+                padding: 12px calc(12px + env(safe-area-inset-right)) 12px calc(12px + env(safe-area-inset-left));
+                padding-top: calc(72px + env(safe-area-inset-top));
+            }
         }
 
         .nav-link {
@@ -259,7 +276,10 @@
     </button>
     <i class="bi bi-robot text-primary fs-4"></i>
     <span class="brand-text">Account Pro</span>
-    <button type="button" class="ms-auto btn btn-sm btn-light border rounded-circle theme-toggle" title="Tema">
+    <button type="button" class="ms-auto btn btn-sm btn-light border rounded-circle mobile-search-btn" title="Qidiruv" aria-label="Qidiruv">
+        <i class="bi bi-search"></i>
+    </button>
+    <button type="button" class="btn btn-sm btn-light border rounded-circle theme-toggle" title="Tema">
         <i class="bi bi-circle-half"></i>
     </button>
 </div>
@@ -469,6 +489,9 @@
         // Let Bootstrap 5.3 natively theme its own components (tables,
         // dropdowns, form controls, borders) instead of hand-patching each.
         document.documentElement.setAttribute('data-bs-theme', dark ? 'dark' : 'light');
+        // Repaint the mobile browser chrome / status bar to match.
+        const meta = document.getElementById('metaThemeColor');
+        if (meta) meta.setAttribute('content', dark ? '#1e293b' : '#ffffff');
     }
     function currentTheme() {
         return localStorage.getItem(THEME_KEY) || 'light';
@@ -727,6 +750,11 @@
             e.preventDefault();
             modal.show();
         }
+    });
+
+    // Mobile has no Ctrl+K — the top-bar search button opens the palette.
+    document.querySelectorAll('.mobile-search-btn').forEach(function (b) {
+        b.addEventListener('click', function () { modal.show(); });
     });
 })();
 </script>
