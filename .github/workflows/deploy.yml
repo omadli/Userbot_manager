@@ -1,4 +1,25 @@
-name: Deploy to AWS
+name: Deploy
+
+# Deploys over SSH using PASSWORD auth (not a key) and plain repository-level
+# secrets — no GitHub deployment environment.
+#
+# Required repository → Settings → Secrets and variables → Actions:
+#   Secrets:
+#     SERVER_IP          — host / IP of the target server
+#     SSH_PASSWORD       — SSH login password for SERVER_USER
+#     SECRET_KEY         — Django SECRET_KEY
+#     DB_ENCRYPTION_KEY  — Fernet key for session encryption
+#     API_ID             — Telegram API id
+#     API_HASH           — Telegram API hash
+#   Variables (optional, have defaults):
+#     SERVER_USER        — SSH username (default: ubuntu)
+#     SERVER_PORT        — SSH port (default: 22)
+#
+# Server prerequisites for password auth:
+#   * sshd must allow it: `PasswordAuthentication yes` in /etc/ssh/sshd_config
+#   * SERVER_USER needs passwordless sudo for the `sudo chown` step below,
+#     e.g. a /etc/sudoers.d drop-in: `<user> ALL=(ALL) NOPASSWD:ALL`
+#     (otherwise `sudo chown` hangs waiting for a password and the run fails).
 
 on:
   push:
@@ -14,7 +35,6 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: aws
     timeout-minutes: 15
 
     steps:
@@ -30,7 +50,7 @@ jobs:
           host: ${{ secrets.SERVER_IP }}
           username: ${{ vars.SERVER_USER || 'ubuntu' }}
           port: ${{ vars.SERVER_PORT || 22 }}
-          key: ${{ secrets.SSH_KEY }}
+          password: ${{ secrets.SSH_PASSWORD }}
           envs: SECRET_KEY,DB_ENCRYPTION_KEY,API_ID,API_HASH,GIT_REPO
           command_timeout: 12m
           # `script_stop` injects a `if [ $? -ne 0 ]; exit; fi` between every
