@@ -689,7 +689,12 @@
     }
 
     poll(cursor === 0);
-    setInterval(() => poll(false), 10000);
+    // Poll only while the tab is visible — saves battery/data on mobile when
+    // the app is backgrounded; refresh immediately when it comes back.
+    setInterval(() => { if (document.visibilityState === 'visible') poll(false); }, 10000);
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') poll(false);
+    });
 })();
 </script>
 
