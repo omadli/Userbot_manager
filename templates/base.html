@@ -254,6 +254,17 @@
             --bs-table-striped-bg: rgba(148, 163, 184, 0.06);
             --bs-table-striped-color: var(--text-primary);
         }
+        /* .table-light is a FIXED light variant that ignores data-bs-theme —
+           its cells set their own --bs-table-bg, so overriding the element
+           background isn't enough. Re-map the vars so light-headed tables
+           (jobs, tags, stats, scripts, groups, channels…) go dark. */
+        body.theme-dark .table-light,
+        body.theme-dark .table > :not(caption) > * > *.table-light,
+        body.theme-dark .table-light > * {
+            --bs-table-bg: var(--bg-soft);
+            --bs-table-color: var(--text-primary);
+            --bs-table-border-color: var(--border-soft);
+        }
         /* Mobile top bar is a custom component Bootstrap's theming can't reach */
         body.theme-dark .mobile-topbar { background: var(--bg-sidebar); box-shadow: 0 2px 10px rgba(0,0,0,0.45); }
         body.theme-dark .mobile-topbar .brand-text { color: var(--text-primary); }
@@ -377,7 +388,7 @@
     <button type="button" class="ms-auto btn btn-sm btn-light border rounded-circle mobile-search-btn" title="Qidiruv" aria-label="Qidiruv">
         <i class="bi bi-search"></i>
     </button>
-    <button type="button" class="btn btn-sm btn-light border rounded-circle theme-toggle" title="Tema">
+    <button type="button" class="btn btn-sm btn-light border rounded-circle theme-toggle" title="Rejim">
         <i class="bi bi-circle-half"></i>
     </button>
 </div>
@@ -464,8 +475,8 @@
         </a>
         <div class="d-flex gap-2 mb-2">
             <button type="button" class="btn btn-light flex-grow-1 fw-medium border shadow-sm rounded-pill theme-toggle"
-                    title="Tema (yorug' / qorong'i)">
-                <i class="bi bi-circle-half me-1"></i><span class="theme-toggle-label">Tema</span>
+                    title="Rejim (kunduzki / tungi)">
+                <i class="bi bi-circle-half me-1"></i><span class="theme-toggle-label">Rejim</span>
             </button>
             <button type="button" class="btn btn-light fw-medium border shadow-sm rounded-pill px-3"
                     onclick="document.dispatchEvent(new KeyboardEvent('keydown',{key:'?',shiftKey:true}))"
@@ -544,7 +555,7 @@
             <kbd>?</kbd>
         </div>
         <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
-            <span>Yorug' / qorong'i temani almashtirish</span>
+            <span>Kunduzki / tungi rejimni almashtirish</span>
             <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>L</kbd>
         </div>
         <div class="d-flex justify-content-between align-items-center py-2 border-bottom">

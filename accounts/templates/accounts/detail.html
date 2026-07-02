@@ -89,6 +89,17 @@
     color: #111827;
     font-size: .95rem;
 }
+
+/* ── Dark mode: this page is hand-styled with light hex colors, so re-map
+   the ones that turn unreadable on a dark background. ── */
+body.theme-dark .info-val { color: var(--text-primary); }
+body.theme-dark .info-label { color: var(--text-muted); }
+body.theme-dark .tab-nav .nav-link { color: var(--text-secondary); }
+body.theme-dark .tab-nav .nav-link.active {
+    color: #60a5fa;
+    border-bottom-color: #60a5fa;
+    background: var(--bg-card);
+}
 </style>
 
 <!-- ── Back button ───────────────────────────────────────────── -->
@@ -677,6 +688,9 @@ $(function(){
     });
 
     ctx.clearRect(0, 0, W, H);
+    const dark = document.body.classList.contains('theme-dark');
+    const emptyColor = dark ? 'rgba(148,163,184,0.25)' : '#e5e7eb';
+    const labelColor = dark ? '#94a3b8' : '#9ca3af';
     const barW = (W - pad * 2) / data.length;
     data.forEach((d, i) => {
         const x = pad + i * barW + 2;
@@ -686,7 +700,7 @@ $(function(){
         const y = H - pad - h;
 
         if (h === 0) {
-            ctx.fillStyle = '#e5e7eb';
+            ctx.fillStyle = emptyColor;
             ctx.fillRect(x, H - pad - 4, w, 4);
         } else {
             const successPct = (d.success || 0) / total;
@@ -699,7 +713,7 @@ $(function(){
             ctx.fillStyle = '#94a3b8'; ctx.fillRect(x, y, w, oH);
         }
 
-        ctx.fillStyle = '#9ca3af';
+        ctx.fillStyle = labelColor;
         ctx.font = '10px Inter, sans-serif';
         ctx.textAlign = 'center';
         const label = d.day.slice(5);
