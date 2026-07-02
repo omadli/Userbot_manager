@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+{% load static %}<!DOCTYPE html>
 <html lang="uz">
 <head>
     <meta charset="UTF-8">
@@ -13,6 +13,12 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Account Pro">
+
+    <!-- Installable-app wiring -->
+    <link rel="manifest" href="{% url 'manifest' %}">
+    <link rel="apple-touch-icon" href="{% static 'icons/apple-touch-icon.png' %}">
+    <link rel="icon" href="{% static 'favicon.ico' %}" sizes="any">
+    <link rel="icon" type="image/png" href="{% static 'icons/icon-192.png' %}">
 
     <!-- Set the Bootstrap theme + status-bar color before CSS paints so dark
          mode doesn't flash white tables/cards on load. Body `.theme-dark` is
@@ -268,6 +274,18 @@
     </style>
 </head>
 <body>
+<script>
+    // Add the dark class before the body paints — otherwise the custom
+    // `body.theme-dark` rules (sidebar, cards, chat) apply only after the
+    // end-of-body theme script runs, flashing a light page first.
+    (function () {
+        try {
+            if ((localStorage.getItem('app-theme') || 'light') === 'dark') {
+                document.body.classList.add('theme-dark');
+            }
+        } catch (e) {}
+    })();
+</script>
 
 {% if user.is_authenticated %}
 <div class="mobile-topbar">
@@ -759,5 +777,14 @@
 })();
 </script>
 {% endif %}
+<script>
+    // Register the service worker so the app is installable and shows an
+    // offline page. Served from the site root for full-scope control.
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function () {
+            navigator.serviceWorker.register('{% url "service_worker" %}').catch(function () {});
+        });
+    }
+</script>
 </body>
 </html>

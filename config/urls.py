@@ -21,6 +21,7 @@ from django.shortcuts import redirect
 from django.conf import settings
 from django.conf.urls.static import static
 from django.utils.decorators import method_decorator
+from django.views.generic import TemplateView
 from django_ratelimit.decorators import ratelimit
 
 from accounts.views import healthz
@@ -37,6 +38,20 @@ RateLimitedLoginView = method_decorator(
 urlpatterns = [
     path('', lambda request: redirect('accounts:dashboard')),
     path('healthz', healthz, name='healthz'),
+
+    # PWA. sw.js is served from the site root so its scope covers the whole
+    # app; the manifest + offline shell reference hashed static via {% static %}.
+    path('manifest.webmanifest',
+         TemplateView.as_view(template_name='pwa/manifest.webmanifest',
+                              content_type='application/manifest+json'),
+         name='manifest'),
+    path('sw.js',
+         TemplateView.as_view(template_name='pwa/sw.js',
+                              content_type='application/javascript'),
+         name='service_worker'),
+    path('offline/',
+         TemplateView.as_view(template_name='pwa/offline.html'),
+         name='offline'),
     path('admin/', admin.site.urls),
     path('accounts/login/', RateLimitedLoginView.as_view(), name='login'),
     path('accounts/', include('django.contrib.auth.urls')),

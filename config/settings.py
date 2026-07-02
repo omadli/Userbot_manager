@@ -261,6 +261,10 @@ USE_TZ = True
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
+# Project-level static assets (PWA icons, manifest source, etc.) that aren't
+# tied to a single app.
+STATICFILES_DIRS = [BASE_DIR / 'static']
+
 # WhiteNoise: gzip + cache-busting hashed filenames for production.
 # Falls back to non-hashed in DEBUG so runserver still finds files.
 STORAGES = {

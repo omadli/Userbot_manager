@@ -1,0 +1,38 @@
+{% load static %}<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Oflayn — Account Pro</title>
+    <meta name="theme-color" content="#2563eb">
+    <style>
+        :root { color-scheme: light dark; }
+        body {
+            margin: 0; min-height: 100vh;
+            display: flex; align-items: center; justify-content: center;
+            font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+            background: #f4f6f9; color: #111827; text-align: center; padding: 24px;
+        }
+        @media (prefers-color-scheme: dark) {
+            body { background: #0f172a; color: #f1f5f9; }
+        }
+        .box { max-width: 360px; }
+        img { width: 96px; height: 96px; border-radius: 22px; margin-bottom: 20px; }
+        h1 { font-size: 1.3rem; margin: 0 0 8px; }
+        p { color: #6b7280; margin: 0 0 24px; line-height: 1.5; }
+        @media (prefers-color-scheme: dark) { p { color: #94a3b8; } }
+        button {
+            border: 0; background: #2563eb; color: #fff; font-weight: 600;
+            padding: 12px 28px; border-radius: 999px; font-size: 1rem; cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <img src="{% static 'icons/icon-192.png' %}" alt="Account Pro">
+        <h1>Internetga ulanish yo'q</h1>
+        <p>Account Pro'ga ulanib bo'lmadi. Internet aloqangizni tekshiring va qayta urinib ko'ring.</p>
+        <button onclick="location.reload()">Qayta urinish</button>
+    </div>
+</body>
+</html>
