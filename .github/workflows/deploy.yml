@@ -17,9 +17,9 @@ name: Deploy
 #
 # Server prerequisites for password auth:
 #   * sshd must allow it: `PasswordAuthentication yes` in /etc/ssh/sshd_config
-#   * SERVER_USER needs passwordless sudo for the `sudo chown` step below,
-#     e.g. a /etc/sudoers.d drop-in: `<user> ALL=(ALL) NOPASSWD:ALL`
-#     (otherwise `sudo chown` hangs waiting for a password and the run fails).
+#   * SERVER_USER must be in the `docker` group (able to run `docker` without
+#     sudo). The deploy needs NO sudo — bind-mount ownership is fixed via a
+#     throwaway root container, see the chown step below.
 
 on:
   push:
@@ -75,12 +75,22 @@ jobs:
             git reset --hard origin/main
 
             # Bind-mounted dirs must be writable by the container's `app`
-            # user (UID 1000). On a fresh server Docker creates them as root
-            # and Django/collectstatic crashes. Idempotent — re-running is
-            # cheap. `staticfiles` and `media` are also bind-mounted so the
-            # host nginx can serve them directly.
+            # user (UID 1000), else Django's log handler / collectstatic hit
+            # PermissionError. `staticfiles` and `media` are also bind-mounted
+            # so the host nginx can serve them directly.
+            #
+            # Fix ownership via a throwaway root container instead of host
+            # `sudo` — the SSH user is in the `docker` group but need not have
+            # passwordless sudo (which fails in the TTY-less SSH-action shell
+            # with "sudo: a terminal is required to authenticate"). The docker
+            # daemon runs as root, so chowning the bind mounts here Just Works
+            # regardless of the SSH user's UID. Idempotent and cheap.
             mkdir -p logs staticfiles media
-            sudo chown -R 1000:1000 logs staticfiles media
+            docker run --rm \
+                -v "$PWD/logs:/mnt/logs" \
+                -v "$PWD/staticfiles:/mnt/staticfiles" \
+                -v "$PWD/media:/mnt/media" \
+                busybox chown -R 1000:1000 /mnt/logs /mnt/staticfiles /mnt/media
 
             echo "===> [2/5] Upserting secrets in .env (other keys preserved)"
             python3 - <<'PY'
