@@ -359,16 +359,23 @@
     </div>
     
     <div class="col-lg-3 order-1 order-lg-2 mb-4">
-        <form method="get" action="{% url 'accounts:dashboard' %}" class="card p-4 shadow-sm border-0 sticky-top" style="top: 20px;">
-            <h6 class="fw-bold text-uppercase text-muted mb-3" style="font-size: 0.85rem; letter-spacing: 0.5px;">
-                <i class="bi bi-funnel-fill me-1"></i> Filtrlash
-            </h6>
-            <div class="filter-form">
-                {{ filterset.form|crispy }}
-                <button type="submit" class="btn btn-warning w-100 mt-2 fw-bold text-uppercase rounded-pill py-2 shadow-sm text-dark" style="font-size: 0.85rem; letter-spacing: 0.5px;">
-                    Qidirish
-                </button>
-                <a href="{% url 'accounts:dashboard' %}" class="btn btn-light w-100 mt-2 fw-medium rounded-pill py-2 text-decoration-none">Tozalash</a>
+        <form method="get" action="{% url 'accounts:dashboard' %}" class="card shadow-sm border-0 sticky-top" style="top: 20px;">
+            <button type="button"
+                    class="filter-toggle btn d-flex align-items-center justify-content-between w-100 fw-bold text-uppercase text-muted px-4 py-3 border-0 shadow-none"
+                    data-bs-toggle="collapse" data-bs-target="#filterBody"
+                    aria-expanded="false" aria-controls="filterBody"
+                    style="font-size: 0.85rem; letter-spacing: 0.5px;">
+                <span><i class="bi bi-funnel-fill me-1"></i> Filtrlash</span>
+                <i class="bi bi-chevron-down filter-chevron"></i>
+            </button>
+            <div class="collapse" id="filterBody">
+                <div class="filter-form px-4 pb-4">
+                    {{ filterset.form|crispy }}
+                    <button type="submit" class="btn btn-warning w-100 mt-2 fw-bold text-uppercase rounded-pill py-2 shadow-sm text-dark" style="font-size: 0.85rem; letter-spacing: 0.5px;">
+                        Qidirish
+                    </button>
+                    <a href="{% url 'accounts:dashboard' %}" class="btn btn-light w-100 mt-2 fw-medium rounded-pill py-2 text-decoration-none">Tozalash</a>
+                </div>
             </div>
         </form>
     </div>
@@ -461,6 +468,44 @@
     .health-green  { background: #16a34a; box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.18); }
     .health-yellow { background: #f59e0b; box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.18); }
     .health-red    { background: #dc2626; box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.18); }
+
+    /* select2 (country filter) renders its own DOM that Bootstrap's
+       data-bs-theme can't reach — theme it for dark mode here. */
+    body.theme-dark .select2-container--bootstrap-5 .select2-selection {
+        background-color: var(--bg-soft);
+        border-color: var(--border-soft);
+        color: var(--text-primary);
+    }
+    body.theme-dark .select2-container--bootstrap-5 .select2-selection__rendered { color: var(--text-primary) !important; }
+    body.theme-dark .select2-container--bootstrap-5 .select2-selection__placeholder { color: var(--text-muted); }
+    body.theme-dark .select2-dropdown {
+        background-color: var(--bg-card);
+        border-color: var(--border-soft);
+    }
+    body.theme-dark .select2-container--bootstrap-5 .select2-results__option { color: var(--text-primary); }
+    body.theme-dark .select2-container--bootstrap-5 .select2-results__option--highlighted,
+    body.theme-dark .select2-container--bootstrap-5 .select2-results__option[aria-selected="true"] {
+        background-color: var(--link-active-bg);
+        color: var(--link-active-text);
+    }
+    body.theme-dark .select2-container--bootstrap-5 .select2-search__field {
+        background-color: var(--bg-soft);
+        color: var(--text-primary);
+        border-color: var(--border-soft);
+    }
+    body.theme-dark .select2-container--bootstrap-5 .select2-selection__arrow b {
+        border-color: var(--text-muted) transparent transparent transparent;
+    }
+
+    /* Collapsible filter: chevron flips when open; on desktop the filter is a
+       persistent sidebar (always expanded, header acts as a plain label). */
+    .filter-chevron { transition: transform 0.2s ease; }
+    .filter-toggle[aria-expanded="true"] .filter-chevron { transform: rotate(180deg); }
+    @media (min-width: 992px) {
+        #filterBody { display: block !important; }
+        .filter-toggle { pointer-events: none; }
+        .filter-chevron { display: none; }
+    }
 
     /* ──────────────────────────────────────────────────────────────────
        Mobile: the wide accounts table is unreadable with horizontal scroll,
