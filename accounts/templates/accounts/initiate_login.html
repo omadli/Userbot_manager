@@ -17,7 +17,7 @@
                 <!-- Phone number -->
                 <div class="mb-4 text-start">
                     <label class="form-label fw-bold text-muted small text-uppercase" style="letter-spacing: 0.5px;">Telefon raqam</label>
-                    <input type="text" name="phone_number" class="form-control form-control-lg fw-medium bg-light border-0"
+                    <input type="tel" inputmode="tel" name="phone_number" class="form-control form-control-lg fw-medium bg-light border-0"
                            placeholder="+998..." required autocomplete="off" autofocus>
                 </div>
 
@@ -49,7 +49,7 @@
                         <div class="mb-1">
                             <label class="form-label fw-bold text-muted small text-uppercase" style="letter-spacing: 0.5px;">API Hash</label>
                             <input type="text" name="api_hash" class="form-control bg-light border-0 font-monospace"
-                                   placeholder="a1b2c3d4e5f6...">
+                                   placeholder="a1b2c3d4e5f6..." autocomplete="off" autocapitalize="off" spellcheck="false">
                         </div>
                         <div class="form-text text-muted">
                             Bo'sh qoldirilsa global <code>settings.py</code> dagi kalitlar ishlatiladi.<br>

@@ -16,13 +16,13 @@
                     <!-- KOD -->
                     <div class="mb-4 position-relative">
                         <label class="form-label text-muted fw-bold small">Telegramdan kelgan kod</label>
-                        <input type="text" name="code" class="form-control form-control-lg bg-light border-0" placeholder="12345" required autofocus>
+                        <input type="text" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" class="form-control form-control-lg bg-light border-0" placeholder="12345" required autofocus>
                     </div>
                     
                     <!-- EMAIL -->
                     <div class="mb-4">
                         <label class="form-label text-muted fw-bold small">Elektron pochta (Email)</label>
-                        <input type="email" name="email" class="form-control form-control-lg bg-light border-0" placeholder="example@gmail.com" {% if email %}value="{{ email }}"{% endif %}>
+                        <input type="email" name="email" inputmode="email" autocomplete="email" class="form-control form-control-lg bg-light border-0" placeholder="example@gmail.com" {% if email %}value="{{ email }}"{% endif %}>
                         <div class="form-text">Boshqa tizimlarga ulanganda tiklash vositasi (Ixtiyoriy)</div>
                     </div>
                 {% else %}
