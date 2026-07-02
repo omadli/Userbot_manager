@@ -4,6 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Account Menejeri</title>
+    <!-- Set Bootstrap's theme attribute before CSS paints so dark mode doesn't
+         flash white tables/cards on load. Body `.theme-dark` is added later. -->
+    <script>
+        (function () {
+            try {
+                var t = localStorage.getItem('app-theme') || 'light';
+                document.documentElement.setAttribute('data-bs-theme', t === 'dark' ? 'dark' : 'light');
+            } catch (e) {}
+        })();
+    </script>
     <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Bootstrap CSS -->
@@ -199,6 +209,44 @@
             .btn { white-space: nowrap; }
             /* Action button groups stack instead of overflowing */
             .d-flex.gap-2.flex-wrap > .btn { flex: 1 1 auto; min-width: 0; }
+        }
+
+        /* ── Extended dark-mode coverage (maps Bootstrap 5.3 onto our palette) ── */
+        [data-bs-theme="dark"] {
+            --bs-body-bg: var(--bg-app);
+            --bs-body-color: var(--text-primary);
+            --bs-border-color: var(--border-soft);
+            --bs-secondary-bg: var(--bg-soft);
+            --bs-tertiary-bg: var(--bg-soft);
+            --bs-emphasis-color: var(--text-primary);
+        }
+        /* Tables sit inside dark cards: keep cells transparent so the card
+           shows through, and theme borders / hover row to the palette. */
+        body.theme-dark .table {
+            --bs-table-bg: transparent;
+            --bs-table-color: var(--text-primary);
+            --bs-table-border-color: var(--border-soft);
+            --bs-table-hover-bg: rgba(148, 163, 184, 0.12);
+            --bs-table-hover-color: var(--text-primary);
+            --bs-table-striped-bg: rgba(148, 163, 184, 0.06);
+            --bs-table-striped-color: var(--text-primary);
+        }
+        /* Mobile top bar is a custom component Bootstrap's theming can't reach */
+        body.theme-dark .mobile-topbar { background: var(--bg-sidebar); box-shadow: 0 2px 10px rgba(0,0,0,0.45); }
+        body.theme-dark .mobile-topbar .brand-text { color: var(--text-primary); }
+        body.theme-dark .mobile-topbar .menu-btn { border-color: var(--border-soft); color: #93c5fd; }
+
+        /* ── Mobile drawer polish: a wider, rounded, elevated panel that
+           clearly reads as fully open instead of a half-slid sheet. ── */
+        .sidebar { border-right: 1px solid var(--border-soft); }
+        @media (max-width: 991.98px) {
+            .sidebar {
+                width: min(300px, 85vw);
+                border-right: none;
+                border-radius: 0 20px 20px 0;
+                box-shadow: 12px 0 40px rgba(0,0,0,0.30);
+            }
+            .sidebar-backdrop { backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); }
         }
     </style>
 </head>
@@ -416,8 +464,11 @@
 
     const THEME_KEY = 'app-theme';
     function applyTheme(name) {
-        if (name === 'dark') document.body.classList.add('theme-dark');
-        else document.body.classList.remove('theme-dark');
+        const dark = name === 'dark';
+        document.body.classList.toggle('theme-dark', dark);
+        // Let Bootstrap 5.3 natively theme its own components (tables,
+        // dropdowns, form controls, borders) instead of hand-patching each.
+        document.documentElement.setAttribute('data-bs-theme', dark ? 'dark' : 'light');
     }
     function currentTheme() {
         return localStorage.getItem(THEME_KEY) || 'light';

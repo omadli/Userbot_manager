@@ -21,7 +21,8 @@
 <div class="card shadow-sm">
     <div class="card-body p-0">
         {% if tasks %}
-        <table class="table table-hover mb-0 align-middle">
+        <div class="table-responsive">
+        <table class="table table-hover mb-0 align-middle text-nowrap">
             <thead class="table-light">
                 <tr>
                     <th class="ps-4" style="width: 70px;">#</th>
@@ -144,6 +145,7 @@
                 {% endfor %}
             </tbody>
         </table>
+        </div>
         {% else %}
         <div class="text-center py-5 text-muted">
             <i class="bi bi-hdd-stack fs-1 opacity-25 d-block mb-2"></i>

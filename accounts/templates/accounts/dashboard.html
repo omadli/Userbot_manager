@@ -154,7 +154,7 @@
             {% csrf_token %}
             <div class="card shadow-sm border-0 mb-4">
                 
-                <div class="card-header bg-white border-bottom py-3 d-flex flex-wrap justify-content-between align-items-center">
+                <div class="card-header bg-white border-bottom py-3 d-flex flex-wrap justify-content-between align-items-center bulk-actions-bar gap-2">
                     <div class="d-flex align-items-center gap-2 flex-wrap">
                         <span class="fw-bold text-dark"><i class="bi bi-list-task me-2"></i>Maxsus Harakatlar</span>
                         <input type="hidden" name="select_all_filter" id="selectAllFilterInput" value="0">
@@ -165,7 +165,7 @@
                             Filterdagilarni: <span id="filterCount" class="fw-bold">{{ filter_count|default:0 }}</span>
                         </button>
                     </div>
-                    <div class="d-flex gap-2 align-items-center">
+                    <div class="d-flex gap-2 align-items-center flex-wrap bulk-actions-controls">
                         <select name="bulk_action" class="form-select form-select-sm rounded-pill bg-light border-0 fw-medium" style="width: auto;">
                             <option value="">Harakatni tanlang...</option>
                             <option value="create_groups">👥 Guruh yaratish (bulk)</option>
@@ -230,7 +230,7 @@
                 </div>
 
                 <div class="table-responsive">
-                    <table class="table table-hover align-middle mb-0 border-0 text-nowrap">
+                    <table class="table table-hover align-middle mb-0 border-0 text-nowrap accounts-table">
                         <thead class="bg-light">
                             <tr>
                                 <th class="ps-4 py-3 text-muted fw-bold" style="width: 40px;">
@@ -252,11 +252,11 @@
                         <tbody class="border-top-0">
                             {% for account in accounts %}
                             <tr>
-                                <td class="ps-4 py-3">
+                                <td class="ps-4 py-3 cell-check">
                                     <input class="form-check-input border-secondary row-checkbox" type="checkbox" name="selected" value="{{ account.id }}">
                                 </td>
-                                <td class="text-muted fw-medium">{{ forloop.counter }}</td>
-                                <td class="py-3">
+                                <td class="text-muted fw-medium cell-num">{{ forloop.counter }}</td>
+                                <td class="py-3 cell-name">
                                     <div class="fw-bold text-dark fs-6">
                                         {% if account.first_name %}{{ account.first_name }} {{ account.last_name|default:'' }}{% else %}Nomsiz{% endif %}
                                     </div>
@@ -267,28 +267,28 @@
                                         {% endif %}
                                     </div>
                                 </td>
-                                <td>
+                                <td data-label="Davlat">
                                     <span class="badge bg-light text-dark border fs-6 px-2 py-1">
                                         <span class="fi fi-{{ account.country_code|lower }} me-1 border border-secondary border-opacity-25 rounded-1"></span>{{ account.country_code|default:'?' }}
                                     </span>
                                 </td>
-                                <td class="col-email d-none text-muted fw-medium" style="font-size: 0.9rem;">
+                                <td class="col-email d-none text-muted fw-medium" style="font-size: 0.9rem;" data-label="Email">
                                     {{ account.email|default:"Kiritilmagan" }}
                                 </td>
-                                <td class="col-2fa d-none text-muted fw-medium" style="font-size: 0.9rem;">
+                                <td class="col-2fa d-none text-muted fw-medium" style="font-size: 0.9rem;" data-label="2FA parol">
                                     {% if account.two_fa_password %}
                                     <span class="badge bg-secondary bg-opacity-10 text-dark border px-2 py-1"><i class="bi bi-key me-1"></i>O'rnatilgan</span>
                                     {% else %}
                                     Yo'q
                                     {% endif %}
                                 </td>
-                                <td class="col-groups d-none">
+                                <td class="col-groups d-none" data-label="Guruh">
                                     <span class="badge bg-info bg-opacity-10 text-info border border-info rounded-pill px-2 fs-6" title="Guruhlar soni">Guruh: {{ account.groups_count|default:0 }}</span>
                                 </td>
-                                <td class="col-channels d-none">
+                                <td class="col-channels d-none" data-label="Kanal">
                                     <span class="badge bg-primary bg-opacity-10 text-primary border border-primary rounded-pill px-2 fs-6" title="Kanallar soni">Kanal: {{ account.channels_count|default:0 }}</span>
                                 </td>
-                                <td>
+                                <td data-label="Teglar">
                                     <div class="d-flex flex-wrap gap-1 tag-cell"
                                          data-account-id="{{ account.id }}"
                                          data-current-tags="{% for t in account.tags.all %}{{ t.id }}{% if not forloop.last %},{% endif %}{% endfor %}"
@@ -301,7 +301,7 @@
                                         {% endfor %}
                                     </div>
                                 </td>
-                                <td>
+                                <td data-label="Sog'lik">
                                     {% with band=account.health_band %}
                                     <div class="d-flex align-items-center gap-2" title="{{ account.health_score }}/100">
                                         <div class="health-dot health-{{ band }}"></div>
@@ -311,14 +311,14 @@
                                     </div>
                                     {% endwith %}
                                 </td>
-                                <td>
-                                    <div class="d-flex flex-column gap-1" style="width: 80px;">
+                                <td data-label="Holati">
+                                    <div class="d-flex flex-column gap-1 status-badges" style="width: 80px;">
                                         {% if account.is_active %}
                                         <span class="badge bg-success bg-opacity-10 text-success border border-success px-1 py-1 w-100 text-center">Aktiv</span>
                                         {% else %}
                                         <span class="badge bg-danger bg-opacity-10 text-danger border border-danger px-1 py-1 w-100 text-center">Aktivmas</span>
                                         {% endif %}
-                                        
+
                                         {% if account.is_spam %}
                                         <span class="badge bg-danger text-white border border-danger px-1 py-1 w-100 text-center"><i class="bi bi-x-circle me-1"></i>Spam</span>
                                         {% else %}
@@ -326,7 +326,7 @@
                                         {% endif %}
                                     </div>
                                 </td>
-                                <td class="pe-4 text-end">
+                                <td class="pe-4 text-end cell-actions">
                                     <div class="btn-group shadow-sm rounded-pill">
                                         <a href="{% url 'accounts:account_detail' account.pk %}"
                                            class="btn btn-sm btn-primary fw-medium border-0 px-3">
@@ -461,6 +461,100 @@
     .health-green  { background: #16a34a; box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.18); }
     .health-yellow { background: #f59e0b; box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.18); }
     .health-red    { background: #dc2626; box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.18); }
+
+    /* ──────────────────────────────────────────────────────────────────
+       Mobile: the wide accounts table is unreadable with horizontal scroll,
+       so on phones each row becomes a self-contained card with field labels.
+       ────────────────────────────────────────────────────────────────── */
+    @media (max-width: 767.98px) {
+        .accounts-table thead { display: none; }
+        .accounts-table, .accounts-table tbody { display: block; width: 100%; }
+
+        .accounts-table tr {
+            display: block;
+            position: relative;
+            border: 1px solid var(--border-soft);
+            border-radius: 14px;
+            padding: 0.85rem 1rem;
+            margin-bottom: 0.85rem;
+            background: var(--bg-card);
+            box-shadow: var(--shadow-card);
+        }
+
+        .accounts-table td {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            width: 100%;
+            padding: 0.35rem 0 !important;
+            border: 0 !important;
+            white-space: normal !important;
+            text-align: right;
+        }
+        .accounts-table td::before {
+            content: attr(data-label);
+            font-weight: 700;
+            font-size: 0.68rem;
+            letter-spacing: 0.4px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            text-align: left;
+            flex: 0 0 auto;
+        }
+        /* Cells without a data-label (checkbox, name, actions) render no label */
+        .accounts-table td:not([data-label])::before { content: none; }
+
+        /* № is noise on a phone-sized card */
+        .accounts-table .cell-num { display: none; }
+
+        /* Checkbox floats top-right as the card's select control */
+        .accounts-table .cell-check {
+            position: absolute;
+            top: 0.9rem;
+            right: 1rem;
+            width: auto;
+            padding: 0 !important;
+        }
+        .accounts-table .cell-check .form-check-input { width: 1.2rem; height: 1.2rem; }
+
+        /* Name + phone is the card header */
+        .accounts-table .cell-name {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.15rem;
+            text-align: left;
+            padding-right: 2rem !important;
+            padding-bottom: 0.6rem !important;
+            margin-bottom: 0.35rem;
+            border-bottom: 1px solid var(--border-soft) !important;
+        }
+
+        /* Action buttons span the full width at the card's foot */
+        .accounts-table .cell-actions {
+            padding-top: 0.65rem !important;
+            margin-top: 0.35rem;
+            border-top: 1px solid var(--border-soft) !important;
+        }
+        .accounts-table .cell-actions .btn-group { width: 100%; display: flex; }
+        .accounts-table .cell-actions .btn-group .btn { flex: 1 1 0; }
+
+        .accounts-table .tag-cell { max-width: none !important; justify-content: flex-end; }
+        .accounts-table .status-badges { width: auto !important; }
+
+        /* Empty state ("Topilmadi") spans the whole card, centered */
+        .accounts-table td[colspan] {
+            display: block;
+            text-align: center;
+            padding: 1.5rem 0 !important;
+        }
+
+        /* Bulk-action bar: stack the controls full width instead of squeezing */
+        .bulk-actions-controls { width: 100%; }
+        .bulk-actions-controls .form-select { flex: 1 1 100%; width: 100% !important; }
+        .bulk-actions-controls .dropdown { margin-left: 0 !important; }
+        .bulk-actions-controls .dropdown-toggle { width: 100%; }
+    }
 </style>
 <div class="modal fade" id="tagsEditModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
